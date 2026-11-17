@@ -13,7 +13,8 @@ Chatbot hỏi đáp (RAG) trên tài liệu PDF. Hiện dùng cho **Dược thư
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock        # phiên bản đã kiểm thử (hoặc requirements.txt)
+pip install -r requirements-dev.txt     # pytest
 cp .env.example .env        # rồi sửa OLLAMA_BASE_URL, khoá API (nếu dùng)
 python -m test_check.check_ollama   # kiểm tra kết nối và model
 ```
@@ -46,17 +47,44 @@ Muốn dùng tài liệu khác thì đặt PDF vào `data/documents/` và sửa 
 
 ```bash
 python -m rag.ingest --dry-run   # chỉ phân tích PDF, xem trước chunks (không cần Ollama)
-python -m rag.ingest --reset     # tạo chỉ mục (cần Ollama, ~15.800 chunks)
-streamlit run app.py
+python -m rag.ingest --reset     # tạo chỉ mục (cần Ollama, ~16.160 chunks) – chạy khi backend TẮT
 ```
 
-Qdrant chạy ở chế độ embedded và **chỉ cho một tiến trình truy cập**: tắt app trước khi chạy ingest hoặc đánh giá.
+**Chạy hệ thống (từ P1):** hai tiến trình, backend trước rồi giao diện.
+
+```bash
+# 1) Backend FastAPI – tiến trình DUY NHẤT mở Qdrant (luôn 1 worker, không --reload)
+uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+
+# 2) Giao diện Streamlit (khung 1 + trang cấu hình model), gọi backend qua BACKEND_URL
+streamlit run ui/Home.py
+```
+
+- Trang **Cấu hình model** cần `ADMIN_TOKEN` trong `.env`. Trên trang này có: chọn model cho từng agent, phiên bản prompt, cài đặt, dựng lại chỉ mục **không gián đoạn** (dựng song song rồi mới chuyển sang).
+- Không có Ollama thì hệ thống vẫn chạy: tìm tài liệu bằng BM25, còn câu hỏi được chuyển sang người trực theo mặc định an toàn.
+- `app.py` là giao diện cũ (một trang, tự mở Qdrant). **Không chạy cùng lúc với backend.** Sẽ bỏ khi hết P1.
+
+## Kiểm thử
+
+```bash
+pytest                     # unit test + hồi quy (không cần Ollama/Qdrant)
+pytest -m "not corpus"     # bỏ test hồi quy trên Dược thư thật
+```
+
+Test hồi quy `corpus` cần cache trích xuất PDF (`qdrant_db/cache/`, sinh bởi `rag.ingest --dry-run`); thiếu thì tự bỏ qua.
+
+## Đo năng lực Ollama
+
+```bash
+python -m scripts.bench_ollama      # kết quả: docs/benchmarks/ollama-<thời điểm>.md
+```
 
 ## Đánh giá truy xuất
 
 ```bash
 python -m evaluation.run_eval                 # baseline / dense / bm25 / hybrid
 python -m evaluation.run_eval --methods bm25  # không cần Ollama
+python -m evaluation.run_eval --api           # khi backend đang chạy
 ```
 
 ## Tài liệu dự án

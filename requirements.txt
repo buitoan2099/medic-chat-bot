@@ -7,3 +7,5 @@ pypdf>=4.0
 httpx>=0.27
 streamlit>=1.40
 openai>=3.26.0
+fastapi>=0.163.1
+uvicorn>=0.54.0

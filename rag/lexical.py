@@ -90,21 +90,24 @@ class BM25Index:
 
 
 _lock = threading.Lock()
-_cache = {'key': None, 'index': None}
+_cache = {}  # đường dẫn chunks.jsonl -> (mtime, BM25Index)
 
 
-def get_index():
-    """Chỉ mục BM25 hiện tại (dựng lại khi chunks.jsonl thay đổi), hoặc None."""
+def get_index(chunks_file=None):
+    """
+    Chỉ mục BM25 cho một chunks.jsonl (mặc định: collection trong .env), dựng lại
+    khi file thay đổi. Trả về None nếu chưa có file.
+    """
 
-    if not CHUNKS_FILE.exists():
+    path = chunks_file or CHUNKS_FILE
+    if not path.exists():
         return None
 
-    key = CHUNKS_FILE.stat().st_mtime
-
+    key = path.stat().st_mtime
     with _lock:
-        if _cache['key'] != key:
-            with CHUNKS_FILE.open(encoding='utf-8') as handle:
+        cached = _cache.get(str(path))
+        if cached is None or cached[0] != key:
+            with path.open(encoding='utf-8') as handle:
                 chunks = [json.loads(line) for line in handle]
-            _cache['index'] = BM25Index(chunks)
-            _cache['key'] = key
-        return _cache['index']
+            _cache[str(path)] = (key, BM25Index(chunks))
+        return _cache[str(path)][1]

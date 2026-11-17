@@ -16,6 +16,7 @@ Quy trình:
 
 import argparse
 import glob
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -28,11 +29,10 @@ from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from config import (
     BASE_DIR,
-    CHUNKS_FILE,
     COLLECTION_NAME,
     PDF_GLOB,
     QDRANT_DIR,
-    STATE_FILE,
+    sidecar_paths,
 )
 from rag.embeddings import embed_texts
 from rag.pdf_parser import extract_pages, page_at, parse_document
@@ -56,19 +56,38 @@ PATH_DEPTH = 3
 CACHE_DIR = QDRANT_DIR / 'cache'
 
 
-def write_ingest_state(**values):
+@dataclass(frozen=True)
+class IngestTarget:
+    """Collection đích và các file phụ đi kèm (chunks.jsonl, ingest_state.json)."""
+
+    collection: str
+
+    @property
+    def chunks_file(self):
+        return sidecar_paths(self.collection)[1]
+
+    @property
+    def state_file(self):
+        return sidecar_paths(self.collection)[2]
+
+
+DEFAULT_TARGET = IngestTarget(COLLECTION_NAME)
+
+
+def write_ingest_state(target=DEFAULT_TARGET, **values):
     """Ghi tiến độ nguyên tử để có thể tiếp tục sau khi bị gián đoạn."""
 
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = STATE_FILE.with_suffix('.tmp')
+    path = target.state_file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(values, ensure_ascii=False, indent=2), encoding='utf-8')
-    os.replace(temporary, STATE_FILE)
+    os.replace(temporary, path)
 
 
-def point_id(chunk_id):
+def point_id(chunk_id, collection=COLLECTION_NAME):
     """Tạo UUID ổn định từ chunk_id, hợp lệ với Qdrant Local."""
 
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, f'{COLLECTION_NAME}/{chunk_id}'))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f'{collection}/{chunk_id}'))
 
 
 # ============================================================
@@ -176,61 +195,70 @@ def load_documents(log=print):
     return chunks, stats
 
 
-def write_chunks_file(chunks):
+def write_chunks_file(chunks, target=DEFAULT_TARGET):
     """Ghi chunks.jsonl (BM25 đọc file này, không cần Qdrant)."""
 
-    CHUNKS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = CHUNKS_FILE.with_suffix('.tmp')
+    path = target.chunks_file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix('.tmp')
     with temporary.open('w', encoding='utf-8') as handle:
         for chunk in chunks:
             handle.write(json.dumps(chunk, ensure_ascii=False) + '\n')
-    os.replace(temporary, CHUNKS_FILE)
+    os.replace(temporary, path)
 
 
 # ============================================================
 # 3. QDRANT
 # ============================================================
 
-def create_collection(client, vector_size, reset=False, resume=False):
+class IngestCancelled(RuntimeError):
+    pass
+
+
+def create_collection(client, vector_size, target=DEFAULT_TARGET, reset=False, resume=False,
+                      log=print):
     """Tạo collection. Đã tồn tại: resume -> dùng tiếp, reset -> xoá tạo lại."""
 
-    if client.collection_exists(COLLECTION_NAME):
+    name = target.collection
+    if client.collection_exists(name):
         if resume:
-            print(f'Tiếp tục collection hiện tại: {COLLECTION_NAME}')
+            log(f'Tiếp tục collection hiện tại: {name}')
             return
         if not reset:
-            raise SystemExit('Collection đã tồn tại. '
-                             'Chạy lại với: python -m rag.ingest --reset')
-        print(f'Đang xóa Collection cũ: {COLLECTION_NAME}')
-        client.delete_collection(COLLECTION_NAME)
+            raise SystemExit('Collection đã tồn tại. Chạy lại với: python -m rag.ingest --reset')
+        log(f'Đang xóa Collection cũ: {name}')
+        client.delete_collection(name)
 
     client.create_collection(
-        collection_name=COLLECTION_NAME,
+        collection_name=name,
         vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
     )
-    print(f'Đã tạo Collection: {COLLECTION_NAME}')
+    log(f'Đã tạo Collection: {name}')
 
 
-def upsert_chunks(client, chunks, vector_size, stats):
+def upsert_chunks(client, chunks, vector_size, stats, target=DEFAULT_TARGET, log=print,
+                  should_cancel=None):
     """Embed theo batch và upsert; bỏ qua batch đã có (phục vụ --resume)."""
 
     total = len(chunks)
+    name = target.collection
 
     for start in range(0, total, BATCH):
+        if should_cancel and should_cancel():
+            raise IngestCancelled('Đã huỷ lập chỉ mục')
         batch = chunks[start:start + BATCH]
-        ids = [point_id(chunk['id']) for chunk in batch]
+        ids = [point_id(chunk['id'], name) for chunk in batch]
 
-        existing = client.retrieve(collection_name=COLLECTION_NAME, ids=ids,
+        existing = client.retrieve(collection_name=name, ids=ids,
                                    with_payload=False, with_vectors=False)
         existing_ids = {str(point.id) for point in existing}
-        pending = [(pid, chunk) for pid, chunk in zip(ids, batch)
-                   if pid not in existing_ids]
+        pending = [(pid, chunk) for pid, chunk in zip(ids, batch) if pid not in existing_ids]
         done = min(start + len(batch), total)
 
         if not pending:
-            write_ingest_state(status='in_progress', completed_chunks=done,
+            write_ingest_state(target, status='in_progress', completed_chunks=done,
                                total_chunks=total, vector_size=vector_size, **stats)
-            print(f'Bỏ qua batch đã lập chỉ mục ({done}/{total})')
+            log(f'Bỏ qua batch đã lập chỉ mục ({done}/{total})')
             continue
 
         vectors = embed_texts([chunk['text'] for _, chunk in pending])
@@ -248,30 +276,73 @@ def upsert_chunks(client, chunks, vector_size, stats):
                 payload={'page_content': chunk['text'], 'metadata': chunk['metadata']},
             ))
 
-        client.upsert(collection_name=COLLECTION_NAME, points=points)
-        write_ingest_state(status='in_progress', completed_chunks=done,
+        client.upsert(collection_name=name, points=points)
+        write_ingest_state(target, status='in_progress', completed_chunks=done,
                            total_chunks=total, vector_size=vector_size, **stats)
-        print(f'Đã lập chỉ mục {done}/{total} chunks')
+        log(f'Đã lập chỉ mục {done}/{total} chunks')
 
 
-def print_summary(client, chunks):
+def print_summary(client, chunks, target=DEFAULT_TARGET, log=print):
     lengths = [len(chunk['text']) for chunk in chunks]
-    count = client.count(collection_name=COLLECTION_NAME, exact=True).count
+    count = client.count(collection_name=target.collection, exact=True).count
 
-    print('\n========== INGESTION SUMMARY ==========')
-    print('Số chunk:', len(chunks))
-    print('Độ dài chunk min/avg/max:', min(lengths), sum(lengths) // len(lengths), max(lengths))
-    print('Số record trong Qdrant:', count)
-    print('Collection:', COLLECTION_NAME)
-    print('Index:', QDRANT_DIR)
-    print('=======================================\n')
+    log('\n========== INGESTION SUMMARY ==========')
+    log(f'Số chunk: {len(chunks)}')
+    log(f'Độ dài chunk min/avg/max: {min(lengths)} {sum(lengths) // len(lengths)} {max(lengths)}')
+    log(f'Số record trong Qdrant: {count}')
+    log(f'Collection: {target.collection}')
+    log(f'Index: {QDRANT_DIR}')
+    log('=======================================\n')
 
     if count != len(chunks):
         raise RuntimeError(f'Số record trong Qdrant ({count}) không khớp số chunk ({len(chunks)})')
 
 
+def run_ingest(client, target=DEFAULT_TARGET, reset=False, resume=False, dry_run=False,
+               log=print, should_cancel=None):
+    """
+    Toàn bộ quy trình lập chỉ mục cho một collection, dùng chung cho CLI và backend
+    (backend truyền client Qdrant dùng chung – technical plan R1).
+
+    Returns:
+        dict: thống kê.
+    """
+
+    log('\n[1/5] Đang đọc và phân tích PDF...')
+    chunks, stats = load_documents(log=log)
+    if not chunks:
+        raise SystemExit('Không có chunk nào được tạo.')
+    stats['chunks'] = len(chunks)
+    log(f'Tổng số chunks: {len(chunks)}')
+    write_chunks_file(chunks, target)
+    log(f'Đã ghi {target.chunks_file.name} ({target.collection})')
+    if dry_run:
+        return stats
+
+    log('\n[2/5] Đang xác định embedding dimension...')
+    sample = embed_texts([chunks[0]['text']])
+    if not sample or not sample[0]:
+        raise RuntimeError('Không thể tạo embedding từ chunk đầu tiên.')
+    vector_size = len(sample[0])
+    log(f'Embedding dimension: {vector_size}')
+
+    log('\n[3/5] Đang chuẩn bị collection...')
+    create_collection(client, vector_size, target, reset=reset, resume=resume, log=log)
+    write_ingest_state(target, status='in_progress', completed_chunks=0,
+                       total_chunks=len(chunks), vector_size=vector_size, **stats)
+
+    log('\n[4/5] Đang lập chỉ mục...')
+    upsert_chunks(client, chunks, vector_size, stats, target, log=log, should_cancel=should_cancel)
+
+    log('\n[5/5] Hoàn thành ingestion!')
+    print_summary(client, chunks, target, log=log)
+    write_ingest_state(target, status='complete', completed_chunks=len(chunks),
+                       total_chunks=len(chunks), vector_size=vector_size, **stats)
+    return stats
+
+
 # ============================================================
-# 4. MAIN
+# 4. MAIN (chế độ offline: chỉ chạy khi backend KHÔNG chạy)
 # ============================================================
 
 def main():
@@ -280,43 +351,17 @@ def main():
     parser.add_argument('--resume', action='store_true', help='Tiếp tục collection đang lập chỉ mục dở dang')
     parser.add_argument('--dry-run', action='store_true',
                         help='Chỉ phân tích PDF và ghi chunks.jsonl, không embed')
+    parser.add_argument('--collection', default=COLLECTION_NAME, help='Collection đích')
     args = parser.parse_args()
-
-    print('\n[1/5] Đang đọc và phân tích PDF...')
-    chunks, stats = load_documents()
-    if not chunks:
-        raise SystemExit('Không có chunk nào được tạo.')
-    stats['chunks'] = len(chunks)
-
-    print(f'Tổng số chunks: {len(chunks)}')
-    write_chunks_file(chunks)
-    print(f'Đã ghi {CHUNKS_FILE.name}')
+    target = IngestTarget(args.collection)
 
     if args.dry_run:
+        run_ingest(None, target, dry_run=True)
         return
 
-    print('\n[2/5] Đang xác định embedding dimension...')
-    sample = embed_texts([chunks[0]['text']])
-    if not sample or not sample[0]:
-        raise RuntimeError('Không thể tạo embedding từ chunk đầu tiên.')
-    vector_size = len(sample[0])
-    print(f'Embedding dimension: {vector_size}')
-
-    print('\n[3/5] Đang kết nối Qdrant...')
     client = QdrantClient(path=str(QDRANT_DIR))
-
     try:
-        create_collection(client, vector_size, reset=args.reset, resume=args.resume)
-        write_ingest_state(status='in_progress', completed_chunks=0,
-                           total_chunks=len(chunks), vector_size=vector_size, **stats)
-
-        print('\n[4/5] Đang lập chỉ mục...')
-        upsert_chunks(client, chunks, vector_size, stats)
-
-        print('\n[5/5] Hoàn thành ingestion!')
-        print_summary(client, chunks)
-        write_ingest_state(status='complete', completed_chunks=len(chunks),
-                           total_chunks=len(chunks), vector_size=vector_size, **stats)
+        run_ingest(client, target, reset=args.reset, resume=args.resume)
     finally:
         client.close()
 

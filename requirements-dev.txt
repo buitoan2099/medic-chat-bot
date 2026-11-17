@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Công cụ phát triển / kiểm thử
+pytest==9.2.0

@@ -1,3 +1,5 @@
+import time
+
 import httpx
 
 # Thư viện NumPy: dùng để chuyển đổi và tính toán trên vector embedding.
@@ -15,6 +17,9 @@ from config import EMBEDDING_MODEL, OLLAMA_BASE_URL, normalize_ollama_base_url
 # Ban đầu là None, nghĩa là client chưa được tạo.
 # Sau lần đầu sử dụng, client sẽ được tái sử dụng cho các request tiếp theo.
 _client = None
+
+# Thời điểm (monotonic) trước đó coi như Ollama embedding đang mất kết nối
+_down_until = [0.0]
 
 
 def _get_client():
@@ -112,12 +117,16 @@ def embed_texts(texts, batch_size=16):
         # Gửi request tạo embedding đến Ollama thông qua OpenAI SDK.
         # model: model embedding được khai báo trong config.py.
         # input: danh sách văn bản cần tạo embedding.
+        if time.monotonic() < _down_until[0]:
+            raise RuntimeError('Ollama (embedding) đang không kết nối được, thử lại sau.')
         try:
             resp = _get_client().embeddings.create(
                 model=EMBEDDING_MODEL,
                 input=batch,
             )
         except (APIConnectionError, APITimeoutError) as error:
+            # Ngắt mạch 30 giây: các truy vấn sau chuyển ngay sang BM25, khỏi chờ timeout
+            _down_until[0] = time.monotonic() + 30.0
             raise RuntimeError(
                 'Không kết nối được Ollama để tạo embedding tại '
                 f'{OLLAMA_BASE_URL}. Kiểm tra Mac mini đã bật và '

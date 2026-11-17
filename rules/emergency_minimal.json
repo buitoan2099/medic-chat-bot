@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "status": "an-toan-toi-thieu",
+  "note": "Dấu hiệu cấp cứu tối thiểu theo khối [AN-TOÀN] (đặc tả 03 mục 1.2). Luôn bật, không phụ thuộc rule set phân tầng (phan-tang.md) đang chờ Hội đồng duyệt. Cụm 1 từ chỉ khớp khi viết đúng dấu để tránh nhầm (vd 'ngất' ≠ 'ngắt').",
+  "phrases": [
+    "khó thở", "thở không được", "không thở được", "thở rít", "tím tái", "tím môi",
+    "đau ngực", "tức ngực", "đau thắt ngực",
+    "ngất", "bất tỉnh", "ngất xỉu", "co giật", "lơ mơ", "lú lẫn", "không tỉnh",
+    "yếu liệt", "liệt nửa người", "yếu nửa người", "méo miệng", "nói khó", "nói ngọng",
+    "chảy máu nhiều", "chảy máu không cầm", "nôn ra máu", "ói ra máu", "đi ngoài ra máu", "phân đen",
+    "phù môi", "sưng môi", "phù lưỡi", "sưng lưỡi", "sưng họng", "phù mặt",
+    "tự tử", "tự sát", "muốn chết", "tự làm hại", "làm hại bản thân",
+    "uống quá liều", "quá liều", "uống nhiều thuốc", "nuốt nhầm", "ngộ độc"
+  ]
+}

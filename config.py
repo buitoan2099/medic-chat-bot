@@ -11,9 +11,22 @@ QDRANT_DIR = BASE_DIR / os.getenv('QDRANT_DIR', 'qdrant_db')
 COLLECTION_NAME = os.getenv('COLLECTION_NAME', 'duoc_2018_v2')
 
 # Dữ liệu phụ của từng collection: chunks (cho BM25), tiến độ ingest
-SIDECAR_DIR = QDRANT_DIR / 'sidecar' / COLLECTION_NAME
-CHUNKS_FILE = SIDECAR_DIR / 'chunks.jsonl'
-STATE_FILE = SIDECAR_DIR / 'ingest_state.json'
+
+
+def sidecar_paths(collection):
+    """(thư mục, chunks.jsonl, ingest_state.json) của một collection."""
+
+    folder = QDRANT_DIR / 'sidecar' / collection
+    return folder, folder / 'chunks.jsonl', folder / 'ingest_state.json'
+
+
+SIDECAR_DIR, CHUNKS_FILE, STATE_FILE = sidecar_paths(COLLECTION_NAME)
+
+# Thư mục dữ liệu chạy của hệ thống chat (đặc tả 04) và địa chỉ backend cho UI
+STORAGE_DIR = BASE_DIR / os.getenv('STORAGE_DIR', 'storage')
+BACKEND_URL = os.getenv('BACKEND_URL', 'http://127.0.0.1:8000').rstrip('/')
+# Khoá cho API quản trị giai đoạn P1 (P2 thay bằng đăng nhập nhân sự)
+ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', '').strip()
 
 # ============================================================
 # TRUY XUẤT (RETRIEVAL)

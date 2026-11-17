@@ -178,6 +178,33 @@ Khi rule set **chưa được duyệt** (feature flag tắt), chỉ áp dụng q
 | **P4 · An toàn & thí điểm** | Nạp rule set phân tầng + danh sách OTC **khi Hội đồng đã duyệt** (feature flag); bộ kiểm thử AC-5.1–5.3; thử tải theo số đo P0; thí điểm nhóm nhỏ; chỉnh prompt | Đủ điều kiện vận hành |
 | **P5 · Mở rộng** | Repository PostgreSQL + công cụ chuyển dữ liệu; web app + WebSocket; đăng nhập người dùng (OTP); nếu tải tăng thì xem lại Q-A (Qdrant server) và Q-D (thêm máy GPU) | Theo nhu cầu |
 
+**Tiến độ P0 (18/11/2026):**
+
+| Việc | Trạng thái |
+|---|---|
+| git, `.gitignore`, push lên GitHub | Xong |
+| Ghim phiên bản: `requirements.lock` (65 gói, lấy từ `.venv` đã kiểm thử), `requirements-dev.txt` | Xong |
+| pytest: 31 test (parser, BM25, truy xuất, ngữ cảnh, ingest, lọc `<think>`, hồi quy trên Dược thư) | Xong, 31/31 qua |
+| Sửa lỗi parser do test phát hiện: tiêu đề mục ở đầu trang bị coi nhầm là tên chạy đầu trang → **511 mục** bị gộp vào mục trước. Đã sửa (9.389 → 9.900 cặp chủ đề–mục; 16.160 chunk) | Xong |
+| Script đo năng lực Ollama `scripts/bench_ollama.py` | Đã viết, **chưa chạy**: Mac mini offline từ ~07/11 |
+| Embed collection `duoc_2018_v2` | **Chưa làm**: cần Ollama |
+
+**Tiến độ P1 (18/11/2026):**
+
+| Việc | Trạng thái |
+|---|---|
+| Backend FastAPI 1 worker, kiểm tra khoá Qdrant lúc khởi động (R1, R2) | Xong: backend thứ hai bị chặn kèm thông báo rõ |
+| Repository local theo ngày giờ VN + bộ test hợp đồng (REPO-1/2, AC-4.3) | Xong |
+| ConfigService + AgentRegistry + prompt có phiên bản, giới hạn ngân sách prompt (X-5, AC-4.1/4.2) | Xong |
+| LLMGateway: nhiều lượt, đầu ra có cấu trúc, stream, model dự phòng, hàng đợi ưu tiên, **ngắt mạch** khi Ollama mất kết nối (X-4, X-7) | Xong |
+| ContextBuilder theo ngân sách token (X-6) | Xong (hệ số 2,5 ký tự/token chờ hiệu chỉnh bằng số đo P0) |
+| IndexManager: rebuild xanh–lục, quay lại, huỷ; **khoá Qdrant** (X-1, X-3, X-11) | Xong |
+| Triage: quy tắc cấp cứu tối thiểu + AG-0, mặc định an toàn; AG-1; ChatService; API khung 1 + quản trị | Xong |
+| UI Streamlit: khung 1 (đồng ý, chế độ AI, thẻ cấp cứu, chuyển người trực, mở lại bằng mã) + trang cấu hình model | Xong, kiểm tra bằng AppTest trên backend thật |
+| `evaluation` chạy qua API (`--api`) | Xong |
+| AC-1.1–1.4, AC-4.1–4.5 | Có test tự động (72 test). **AC-1.2 mới kiểm với LLM giả lập**, chưa với Ollama thật |
+| Bỏ `app.py` cũ | Chưa: chờ chạy được với Ollama thật để đối chiếu |
+
 **Phụ thuộc chặn tiến độ:**
 - **Ollama/Tailscale** chặn P0 (đo năng lực, embed) và mọi kiểm thử end-to-end.
 - **Hội đồng duyệt `phan-tang.md`** chặn bật rule set ở P4. P1–P3 vẫn chạy được với quy tắc an toàn tối thiểu.

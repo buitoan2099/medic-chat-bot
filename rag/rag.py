@@ -16,7 +16,7 @@ import time
 
 from qdrant_client import QdrantClient
 
-from config import CANDIDATE_K, COLLECTION_NAME, MIN_SCORE, QDRANT_DIR, TOP_K
+from config import CANDIDATE_K, COLLECTION_NAME, MIN_SCORE, QDRANT_DIR, TOP_K, sidecar_paths
 from provider.llm import call_generation_api, stream_generation_api
 from rag.embeddings import embed_query
 from rag.lexical import get_index
@@ -115,7 +115,12 @@ def _with_history(question, history):
     return question, False
 
 
-def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True):
+def _bm25(collection):
+    return get_index(sidecar_paths(collection or COLLECTION_NAME)[1])
+
+
+def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True, collection=None,
+             query_override=None, min_score=MIN_SCORE, candidate_k=CANDIDATE_K):
     """
     Tìm các đoạn liên quan đến câu hỏi.
 
@@ -125,14 +130,22 @@ def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True):
         history (list[str] | None): Các câu hỏi trước của người dùng.
         client: QdrantClient (mặc định dùng client chung).
         use_dense (bool): False -> chỉ dùng BM25 (không cần Ollama).
+        collection (str | None): collection cần tìm (mặc định COLLECTION_NAME).
+        query_override (str | None): truy vấn dựng sẵn (vd câu hỏi + hồ sơ ca);
+            khi có thì bỏ qua cơ chế ghép câu hỏi trước.
+        min_score (float | None): ngưỡng cosine; None = không áp ngưỡng.
 
     Returns:
         dict: results (list), query (str), carried (bool),
               top_score (float | None), reason (str | None), warning (str | None)
     """
 
-    bm25 = get_index()
-    query, carried = _with_history(question, history)
+    collection = collection or COLLECTION_NAME
+    bm25 = _bm25(collection)
+    if query_override:
+        query, carried = query_override, False
+    else:
+        query, carried = _with_history(question, history)
 
     warning = None
     vector = None
@@ -158,8 +171,8 @@ def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True):
     top_score = None
     if vector is not None:
         client = client or get_vector_store()
-        points = client.query_points(collection_name=COLLECTION_NAME, query=vector,
-                                     limit=CANDIDATE_K, with_payload=True).points
+        points = client.query_points(collection_name=collection, query=vector,
+                                     limit=candidate_k, with_payload=True).points
         for rank, point in enumerate(points, start=1):
             payload = point.payload or {}
             metadata = dict(payload.get('metadata', {}))
@@ -168,16 +181,16 @@ def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True):
         top_score = max((float(p.score) for p in points), default=0.0)
 
     if bm25 is not None:
-        for rank, (doc, _) in enumerate(bm25.search(query, CANDIDATE_K), start=1):
+        for rank, (doc, _) in enumerate(bm25.search(query, candidate_k), start=1):
             chunk = bm25.chunks[doc]
             add(rank, chunk['id'], chunk['text'], dict(chunk['metadata']))
 
     base = {'query': query, 'carried': carried, 'top_score': top_score, 'warning': warning}
 
     # Không có đoạn nào đủ giống -> không để LLM đoán
-    if top_score is not None and top_score < MIN_SCORE:
+    if min_score is not None and top_score is not None and top_score < min_score:
         return {**base, 'results': [],
-                'reason': f'Độ tương đồng cao nhất {top_score:.2f} < ngưỡng {MIN_SCORE}'}
+                'reason': f'Độ tương đồng cao nhất {top_score:.2f} < ngưỡng {min_score}'}
 
     ranked = sorted(candidates.items(), key=lambda item: item[1]['rrf'], reverse=True)
     results = [
@@ -198,10 +211,10 @@ SECTION_EXPAND_CHARS = 2500
 MAX_CONTEXT_CHARS = 9000
 
 
-def _node_chunks(metadata):
+def _node_chunks(metadata, collection=None):
     """Tất cả chunk cùng mục (node), theo thứ tự trong tài liệu."""
 
-    bm25 = get_index()
+    bm25 = _bm25(collection)
     node_id = metadata.get('node_id')
     if bm25 is None or node_id is None:
         return []
@@ -217,7 +230,7 @@ def _strip_overlap(previous, current):
     return current
 
 
-def build_context_blocks(results):
+def build_context_blocks(results, collection=None, max_chars=None):
     """Gom kết quả thành các khối ngữ cảnh, mở rộng thành cả mục khi mục ngắn."""
 
     blocks = []
@@ -230,7 +243,7 @@ def build_context_blocks(results):
         if node_id in seen:
             continue
 
-        pieces = _node_chunks(meta)
+        pieces = _node_chunks(meta, collection)
         full_length = sum(len(p['text']) for p in pieces)
 
         if pieces and full_length <= SECTION_EXPAND_CHARS:
@@ -248,7 +261,7 @@ def build_context_blocks(results):
             page_start = meta.get('page_number')
             page_end = meta.get('page_end', page_start)
 
-        if used + len(text) > MAX_CONTEXT_CHARS and blocks:
+        if used + len(text) > (max_chars or MAX_CONTEXT_CHARS) and blocks:
             break
         used += len(text)
         blocks.append({'text': text, 'metadata': meta, 'page_start': page_start,

@@ -327,8 +327,10 @@ def _pretty(text, running_titles):
     if matches and not re.search(r'\b\w \w \w\b', matches[0]):
         return ' '.join([matches[0]] + paren)
     if _upper_ratio(text) >= 0.8:
-        lowered = _ROMAN_RE.sub(lambda m: m.group(1).upper(), text.lower())
-        return lowered[:1].upper() + lowered[1:]
+        # Chỉ đổi chữ thường phần ngoài ngoặc; phần trong ngoặc giữ nguyên như PDF
+        core = re.sub(r'\s+', ' ', re.sub(r'\([^)]*\)', ' ', text)).strip()
+        lowered = _ROMAN_RE.sub(lambda m: m.group(1).upper(), core.lower())
+        return ' '.join([lowered[:1].upper() + lowered[1:]] + paren)
     return text
 
 
@@ -363,6 +365,30 @@ def parse_document(pages, log=print):
     body_size = _body_size([cleaned[i] for i in range(total) if i + 1 not in index_set])
 
     # Dòng nội dung + nhận diện tiêu đề, gộp tiêu đề bị ngắt nhiều dòng
+    def heading_key(text):
+        return re.sub(r'\s+', '', fold(re.sub(r'\([^)]*\)', '', text)))
+
+    # Tiêu đề "kiểu mục" (vd "Thận trọng") xuất hiện rải rác khắp tài liệu, ở
+    # nhiều cụm trang cách xa nhau; tên chạy đầu trang chỉ dồn ở vài cụm.
+    heading_pages = {}
+    for page_no, lines in enumerate(cleaned, start=1):
+        if page_no not in index_set:
+            for line in lines:
+                if _heading_style(line, body_size):
+                    heading_pages.setdefault(heading_key(line[0]), []).append(page_no)
+    # Kiểu mục = có mặt trên >= 5 trang VÀ (rải ở >= 5 cụm trang cách xa nhau,
+    # HOẶC phủ >= 25% số trang). Lưu ý: trong sách mà các chủ đề nối tiếp liên
+    # tục (vd Dược thư), tiêu đề mục chỉ tạo 1–3 cụm, nên điều kiện 25% mới là
+    # điều kiện bắt được chúng. Tên chạy đầu trang dày đặc tới 25% đã bị loại ở
+    # bước header/footer.
+    content_pages = max(1, total - len(index_set))
+    section_like = set()
+    for key, pages_seen in heading_pages.items():
+        distinct = len(set(pages_seen))
+        clusters = 1 + sum(1 for a, b in zip(pages_seen, pages_seen[1:]) if b - a > 10)
+        if distinct >= 5 and (clusters >= 5 or distinct >= 0.25 * content_pages):
+            section_like.add(key)
+
     stream = []  # (trang, text, style | None)
     last_heading_page = {}  # khoá tiêu đề -> trang gần nhất
     for page_no, lines in enumerate(cleaned, start=1):
@@ -371,11 +397,14 @@ def parse_document(pages, log=print):
         for i, line in enumerate(lines):
             style = _heading_style(line, body_size)
             if style:
-                key = re.sub(r'\s+', '', fold(re.sub(r'\([^)]*\)', '', line[0])))
+                key = heading_key(line[0])
                 at_edge = i < 3 or i >= len(lines) - 3
                 # Tên chạy đầu trang nằm tách dòng (PDF đôi khi đặt ở cuối luồng
-                # chữ): tiêu đề ở mép trang trùng tiêu đề vừa gặp -> bỏ
-                if at_edge and page_no - last_heading_page.get(key, -99) <= 10:
+                # chữ): tiêu đề ở mép trang, không phải kiểu mục, trùng tiêu đề vừa
+                # gặp trong 10 trang -> bỏ. Tiêu đề mục ở đầu trang ("Thận trọng")
+                # được giữ.
+                if at_edge and key not in section_like \
+                        and page_no - last_heading_page.get(key, -99) <= 10:
                     continue
                 last_heading_page[key] = page_no
             previous = stream[-1] if stream else None

@@ -1,0 +1,143 @@
+"""
+Cấu hình vận hành đọc/ghi lúc chạy (technical plan X-5). `config.py` chỉ còn cấu
+hình khởi động; mọi thứ đổi được trên trang cấu hình nằm ở đây.
+"""
+
+import threading
+
+from backend.agents.registry import AGENT_DEFAULTS, seed_prompt
+from backend.domain import AgentConfig, AuditLog
+from config import CANDIDATE_K, COLLECTION_NAME, MIN_SCORE, TOP_K
+
+DEFAULT_SETTINGS = {
+    'active_collection': COLLECTION_NAME,
+    'previous_collection': None,
+    'llm_max_parallel': 2,
+    'top_k': TOP_K,
+    'candidate_k': CANDIDATE_K,
+    'min_score': MIN_SCORE,
+    # Bộ quy tắc phân tầng (phan-tang.md) chỉ bật khi Hội đồng đã duyệt
+    'tiering_rules_enabled': False,
+}
+
+# Ngân sách system prompt (technical plan 5.2): ~2.500 token ≈ 6.250 ký tự (2,5 ký tự/token)
+PROMPT_BUDGET_TOKENS = 2500
+CHARS_PER_TOKEN = 2.5
+
+EDITABLE_FIELDS = {'provider', 'model', 'temperature', 'max_tokens', 'num_ctx', 'timeout_s',
+                   'enabled', 'fallback_provider', 'fallback_model'}
+ALLOWED_PROVIDERS = {'ollama', 'gemini', 'openai', 'fake'}
+
+
+class ConfigError(ValueError):
+    pass
+
+
+def estimate_tokens(text):
+    return int(len(text) / CHARS_PER_TOKEN) + 1
+
+
+class ConfigService:
+    def __init__(self, storage):
+        self.storage = storage
+        self._lock = threading.RLock()
+
+    # ---------- khởi tạo ----------
+
+    def ensure_seeded(self, actor='system'):
+        """Tạo cấu hình + prompt v1 cho agent chưa có (không ghi đè cấu hình đã sửa)."""
+
+        with self._lock:
+            agents = self.storage.config.get_agents()
+            for agent_id, defaults in AGENT_DEFAULTS.items():
+                if agent_id not in agents:
+                    self.storage.config.save_agent(AgentConfig(agent_id=agent_id, **defaults))
+                if not self.storage.config.list_prompt_versions(agent_id):
+                    self.storage.config.add_prompt_version(agent_id, seed_prompt(agent_id),
+                                                           note='Khởi tạo từ đặc tả 03',
+                                                           created_by=actor)
+            settings = {**DEFAULT_SETTINGS, **self.storage.config.get_settings()}
+            self.storage.config.save_settings(settings)
+
+    # ---------- agent ----------
+
+    def agents(self):
+        return self.storage.config.get_agents()
+
+    def agent(self, agent_id):
+        agents = self.agents()
+        if agent_id not in agents:
+            raise ConfigError(f'Không có agent {agent_id}')
+        return agents[agent_id]
+
+    def update_agent(self, agent_id, changes, actor):
+        unknown = set(changes) - EDITABLE_FIELDS
+        if unknown:
+            raise ConfigError(f'Không sửa được trường: {", ".join(sorted(unknown))}')
+        if 'provider' in changes and changes['provider'] not in ALLOWED_PROVIDERS:
+            raise ConfigError(f'Provider không hợp lệ: {changes["provider"]}')
+        with self._lock:
+            current = self.agent(agent_id)
+            updated = AgentConfig.model_validate({**current.model_dump(), **changes})
+            self.storage.config.save_agent(updated)
+            self._audit(actor, 'agent.update', agent_id,
+                        {'before': {k: getattr(current, k) for k in changes},
+                         'after': changes})
+            return updated
+
+    # ---------- prompt ----------
+
+    def prompt(self, agent_id):
+        """(nội dung, phiên bản) của prompt đang dùng."""
+
+        version = self.agent(agent_id).active_prompt_version
+        return self.storage.config.get_prompt(agent_id, version), version
+
+    def prompt_versions(self, agent_id):
+        return self.storage.config.list_prompt_versions(agent_id)
+
+    def add_prompt_version(self, agent_id, text, note, actor, activate=False):
+        text = text.strip()
+        if not text:
+            raise ConfigError('Prompt rỗng')
+        tokens = estimate_tokens(text)
+        if tokens > PROMPT_BUDGET_TOKENS:
+            raise ConfigError(f'Prompt ~{tokens} token vượt ngân sách {PROMPT_BUDGET_TOKENS} token')
+        with self._lock:
+            self.agent(agent_id)
+            entry = self.storage.config.add_prompt_version(agent_id, text, note, actor)
+            self._audit(actor, 'prompt.add', agent_id, {'version': entry.version, 'note': note})
+            if activate:
+                self.activate_prompt(agent_id, entry.version, actor)
+            return entry
+
+    def activate_prompt(self, agent_id, version, actor):
+        with self._lock:
+            if version not in {v.version for v in self.prompt_versions(agent_id)}:
+                raise ConfigError(f'{agent_id} không có phiên bản {version}')
+            current = self.agent(agent_id)
+            updated = current.model_copy(update={'active_prompt_version': version})
+            self.storage.config.save_agent(updated)
+            self._audit(actor, 'prompt.activate', agent_id,
+                        {'from': current.active_prompt_version, 'to': version})
+            return updated
+
+    # ---------- settings ----------
+
+    def settings(self):
+        return {**DEFAULT_SETTINGS, **self.storage.config.get_settings()}
+
+    def update_settings(self, changes, actor):
+        unknown = set(changes) - set(DEFAULT_SETTINGS)
+        if unknown:
+            raise ConfigError(f'Không có cài đặt: {", ".join(sorted(unknown))}')
+        with self._lock:
+            current = self.settings()
+            updated = {**current, **changes}
+            self.storage.config.save_settings(updated)
+            self._audit(actor, 'settings.update', None,
+                        {'before': {k: current.get(k) for k in changes}, 'after': changes})
+            return updated
+
+    def _audit(self, actor, action, target, data):
+        self.storage.audit.add(AuditLog(actor=actor, action=action, target=target, data=data))

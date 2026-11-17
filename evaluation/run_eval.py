@@ -4,6 +4,7 @@
 Chạy (tắt app Streamlit trước vì Qdrant local chỉ cho 1 process):
     python -m evaluation.run_eval                 # mọi phương án
     python -m evaluation.run_eval --methods bm25  # không cần Ollama
+    python -m evaluation.run_eval --api           # khi backend đang chạy (giữ Qdrant)
 
 Phương án:
     baseline  Collection cũ (BASELINE_COLLECTION), chỉ tìm vector, như app cũ
@@ -112,6 +113,26 @@ def method_hybrid(client):
     return run
 
 
+def api_method(name):
+    """Gọi backend /api/admin/search (khi backend đang chạy và giữ Qdrant – plan R1)."""
+
+    import httpx
+    from config import ADMIN_TOKEN, BACKEND_URL
+
+    method = {'baseline': 'dense', 'dense': 'dense', 'bm25': 'bm25', 'hybrid': 'hybrid'}[name]
+    collection = BASELINE_COLLECTION if name == 'baseline' else None
+    http = httpx.Client(base_url=BACKEND_URL, headers={'X-Admin-Token': ADMIN_TOKEN}, timeout=120)
+
+    def run(question):
+        params = {'q': question, 'method': method, 'k': DEPTH}
+        if collection:
+            params['collection'] = collection
+        response = http.get('/api/admin/search', params=params)
+        response.raise_for_status()
+        return response.json()['results']
+    return run
+
+
 METHODS = {'baseline': method_baseline, 'dense': method_dense,
            'bm25': method_bm25, 'hybrid': method_hybrid}
 
@@ -142,6 +163,8 @@ def summarize(rows):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--methods', default='baseline,dense,bm25,hybrid')
+    parser.add_argument('--api', action='store_true',
+                        help='Gọi backend đang chạy thay vì tự mở Qdrant (bắt buộc khi backend chạy)')
     args = parser.parse_args()
 
     questions = []
@@ -152,18 +175,18 @@ def main():
         # Chuẩn hoá: cho phép nhiều mục đều được tính là đúng
         item.setdefault('sections', [item.get('section')])
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
-    needs_qdrant = any(m != 'bm25' for m in methods)
+    needs_qdrant = not args.api and any(m != 'bm25' for m in methods)
     client = open_vector_store() if needs_qdrant else None
 
     report = {}
     try:
-        if client is not None and 'baseline' in methods \
+        if not args.api and client is not None and 'baseline' in methods \
                 and not client.collection_exists(BASELINE_COLLECTION):
             print(f'Bỏ qua baseline: không có collection {BASELINE_COLLECTION}')
             methods.remove('baseline')
 
         for name in methods:
-            run = METHODS[name](client)
+            run = api_method(name) if args.api else METHODS[name](client)
             rows_by_type = {}
             started = time.perf_counter()
             for item in questions:
