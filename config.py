@@ -27,6 +27,8 @@ STORAGE_DIR = BASE_DIR / os.getenv('STORAGE_DIR', 'storage')
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://127.0.0.1:8000').rstrip('/')
 # Khoá cho API quản trị giai đoạn P1 (P2 thay bằng đăng nhập nhân sự)
 ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', '').strip()
+# Khoá ký token đăng nhập nhân sự (P2). Trống -> sinh tạm mỗi lần chạy (phải đăng nhập lại khi restart)
+AUTH_SECRET = os.getenv('AUTH_SECRET', '').strip()
 
 # ============================================================
 # TRUY XUẤT (RETRIEVAL)

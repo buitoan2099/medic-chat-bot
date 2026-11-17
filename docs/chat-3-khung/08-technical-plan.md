@@ -205,6 +205,20 @@ Khi rule set **chưa được duyệt** (feature flag tắt), chỉ áp dụng q
 | AC-1.1–1.4, AC-4.1–4.5 | Có test tự động (72 test). **AC-1.2 mới kiểm với LLM giả lập**, chưa với Ollama thật |
 | Bỏ `app.py` cũ | Chưa: chờ chạy được với Ollama thật để đối chiếu |
 
+**Tiến độ P2 (18/11/2026):**
+
+| Việc | Trạng thái |
+|---|---|
+| Đăng nhập nhân sự (scrypt, token HMAC, khoá tạm sau 5 lần sai – SEC-1) | Xong |
+| PermissionService: C1/C2/C3 lũy tiến, C2/C3 cần chứng chỉ đã xác minh + còn hạn, C3 phải là bác sĩ, tự hạ khi hết hạn; quyền thao tác; lịch sử chỉ thêm (AC-4.6) | Xong |
+| OperatorService: hàng chờ lọc theo cấp, tiếp nhận có khoá, chỉ định (override + lý do), chuyển cần chấp nhận, đẩy cấp, đóng, mở lại ≤ 24 h / tạo cuộc chat liên kết, SLA, rời ca | Xong |
+| Copilot AG-2/3/4 theo cấp (đầu ra có cấu trúc, nguồn chỉ nội bộ), AG-5 hồ sơ ca + tóm tắt (trường người trực sửa không bị ghi đè), AG-6 + quy tắc (thuốc kê đơn chặn cứng mọi cấp) | Xong. Gợi ý **chưa stream** (sinh nền, UI làm mới 3 giây) |
+| `mutate()`: cập nhật cuộc chat an toàn khi AG-5 chạy nền song song | Xong |
+| UI khung 2 + cập nhật khung 1 (chế độ người trực, tên/chức danh, tự làm mới) | Xong, kiểm tra bằng AppTest trên backend thật |
+| `scripts/staff.py` tạo/cấp quyền nhân sự qua API | Xong |
+| AC-1.5, 1.6, 2.1–2.9 | Có test tự động (tổng 105 test), **LLM giả lập** |
+| Chưa làm (chuyển sang P3/P4): AI trả lời trong lúc chờ (Q-4), trạng thái `abandoned`, khảo sát cuối cuộc chat (UI-1.8), vị trí hàng chờ/thời gian ước tính (UI-1.5), âm báo (UI-2.10), danh mục thuốc kê đơn chính thức (Q-2 – file đang trống) | Ghi nhận |
+
 **Phụ thuộc chặn tiến độ:**
 - **Ollama/Tailscale** chặn P0 (đo năng lực, embed) và mọi kiểm thử end-to-end.
 - **Hội đồng duyệt `phan-tang.md`** chặn bật rule set ở P4. P1–P3 vẫn chạy được với quy tắc an toàn tối thiểu.

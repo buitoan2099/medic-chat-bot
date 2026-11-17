@@ -48,8 +48,8 @@ def update_profile(conversation_id: str, body: ProfileRequest, core=Depends(get_
 
 @router.post('/conversations/{conversation_id}/messages')
 def send(conversation_id: str, body: MessageRequest, core=Depends(get_core)):
-    """Gửi tin ở chế độ AI; trả về stream SSE (xem ChatService.send_ai)."""
-    return sse(core.chat.send_ai(conversation_id, body.text))
+    """Gửi tin; trả về stream SSE (chế độ AI: ChatService.send_ai; người trực: chỉ lưu tin)."""
+    return sse(core.chat.send(conversation_id, body.text))
 
 
 @router.post('/conversations/{conversation_id}/handoff')

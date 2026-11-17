@@ -21,6 +21,7 @@ from backend.domain import (
     SenderType,
 )
 from backend.llm.gateway import PRIORITY_INTERACTIVE, LLMError, StreamStats
+from backend.services.mutate import mutate
 from backend.services.triage import _max_level, _max_urgency
 from rag import rag
 
@@ -39,12 +40,16 @@ class ChatError(RuntimeError):
 
 
 class ChatService:
-    def __init__(self, storage, config_service, gateway, triage, index_manager):
+    def __init__(self, storage, config_service, gateway, triage, index_manager, operator=None,
+                 case_memory=None, background=None):
         self.storage = storage
         self.config = config_service
         self.gateway = gateway
         self.triage = triage
         self.index = index_manager
+        self.operator = operator            # OperatorService (P2), gán sau khi khởi tạo
+        self.case_memory = case_memory
+        self.background = background
 
     # ---------- cuộc trò chuyện ----------
 
@@ -67,12 +72,16 @@ class ChatService:
         return self.storage.messages.list(conversation.id, conversation.days)
 
     def update_profile(self, conversation_id, profile):
-        conversation = self.get(conversation_id)
-        merged = conversation.profile.model_validate({**conversation.profile.model_dump(),
-                                                      **{k: v for k, v in profile.items() if v}})
-        updated = self.storage.conversations.update(
-            conversation.model_copy(update={'profile': merged}), conversation.version)
-        self._event(updated, 'profile_edited', 'end_user', conversation.end_user_id, profile)
+        changes = {k: v for k, v in profile.items() if v}
+
+        def change(conversation):
+            merged = conversation.profile.model_validate({**conversation.profile.model_dump(),
+                                                          **changes})
+            sources = {**conversation.profile_sources, **{k: 'user' for k in changes}}
+            return {'profile': merged, 'profile_sources': sources}
+
+        updated = mutate(self.storage, conversation_id, change)
+        self._event(updated, 'profile_edited', 'end_user', updated.end_user_id, profile)
         return updated
 
     def handoff(self, conversation_id, reason='user_request'):
@@ -86,15 +95,35 @@ class ChatService:
         conversation = self.get(conversation_id)
         if conversation.mode == 'human':
             return conversation, None
-        updated = self.storage.conversations.update(
-            conversation.model_copy(update={'mode': 'human', 'status': ConversationStatus.waiting}),
-            conversation.version)
+        now = iso(utc_now())
+        updated = mutate(self.storage, conversation_id, lambda c: None if c.mode == 'human' else {
+            'mode': 'human', 'status': ConversationStatus.waiting, 'queued_at': now})
         self._event(updated, 'mode_changed', 'end_user', conversation.end_user_id,
                     {'from': 'ai', 'to': 'human', 'reason': reason})
         self._event(updated, 'queued', 'system', None,
                     {'required_level': updated.required_level, 'urgency': updated.urgency})
         message = self._add_message(updated, SenderType.system, QUEUED_TEXT, kind='notice')
         return self.get(conversation_id), message
+
+    # ---------- gửi tin ----------
+
+    def send(self, conversation_id, text):
+        """Điều phối theo chế độ: AI -> send_ai; người trực -> chuyển cho người trực."""
+
+        conversation = self.get(conversation_id)
+        if conversation.mode == 'ai':
+            yield from self.send_ai(conversation_id, text)
+            return
+        text = (text or '').strip()
+        if not text:
+            raise ChatError('Tin nhắn rỗng')
+        if self.operator is None:
+            raise ChatError('Chế độ người trực chưa sẵn sàng')
+        new_id, message = self.operator.customer_message(conversation_id, text)
+        if new_id != conversation_id:
+            yield {'type': 'conversation', 'id': new_id,
+                   'detail': 'Cuộc trò chuyện cũ đã quá 24 giờ, đã mở cuộc trò chuyện mới.'}
+        yield {'type': 'message', 'message': message.model_dump(mode='json')}
 
     # ---------- gửi tin (chế độ AI) ----------
 
@@ -119,6 +148,8 @@ class ChatService:
         user_message = self._add_message(conversation, SenderType.end_user, text,
                                          sender_id=conversation.end_user_id)
         yield {'type': 'message', 'message': user_message.model_dump(mode='json')}
+        if self.case_memory is not None and self.background is not None:
+            self.background.submit(self.case_memory.update, conversation.id)
 
         outcome = self.triage.classify(
             text, ctx.profile_text(conversation),
@@ -197,14 +228,14 @@ class ChatService:
     def _apply_triage(self, conversation_id, triage):
         """Cập nhật cấp cần thiết / độ khẩn: chỉ NÂNG, không bao giờ hạ (BR-08b)."""
 
-        conversation = self.get(conversation_id)
-        level = _max_level(conversation.required_level.value, triage.required_level)
-        urgency = _max_urgency(conversation.urgency.value, triage.urgency)
-        if (level, urgency) == (conversation.required_level.value, conversation.urgency.value):
-            return conversation
-        return self.storage.conversations.update(
-            conversation.model_copy(update={'required_level': level, 'urgency': urgency}),
-            conversation.version)
+        def change(conversation):
+            level = _max_level(conversation.required_level.value, triage.required_level)
+            urgency = _max_urgency(conversation.urgency.value, triage.urgency)
+            if (level, urgency) == (conversation.required_level.value, conversation.urgency.value):
+                return None
+            return {'required_level': level, 'urgency': urgency}
+
+        return mutate(self.storage, conversation_id, change)
 
     def _add_message(self, conversation, sender_type, content, sender_id=None, kind='text',
                      sources=None, ai_run_id=None):
@@ -212,11 +243,8 @@ class ChatService:
                           sender_id=sender_id, content=content, kind=kind,
                           sources=sources or [], ai_run_id=ai_run_id)
         self.storage.messages.add(message)
-        if message.local_date not in conversation.days:
-            fresh = self.get(conversation.id)
-            self.storage.conversations.update(
-                fresh.model_copy(update={'days': sorted(set(fresh.days) | {message.local_date})}),
-                fresh.version)
+        mutate(self.storage, conversation.id, lambda c: None if message.local_date in c.days
+               else {'days': sorted(set(c.days) | {message.local_date})})
         return message
 
     def _event(self, conversation, type_, actor_type, actor_id, data):

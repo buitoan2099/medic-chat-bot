@@ -117,6 +117,8 @@ def render(message):
         return
     label = 'assistant' if sender == 'ai' else 'human'
     with st.chat_message(label, avatar='🤖' if sender == 'ai' else '🧑‍⚕️'):
+        if sender == 'staff':                         # UI-1.6: tên hiển thị + chức danh
+            st.caption(message.get('sender_name') or 'Người trực')
         st.markdown(message['content'])
         if message.get('sources'):                    # UI-1.9: nguồn thu gọn, chỉ ở chế độ AI
             with st.expander('Tài liệu tham khảo'):
@@ -126,13 +128,33 @@ def render(message):
                     st.caption(f'{source.get("title") or source.get("source_file")} — {pages}')
 
 
+if conversation['mode'] == 'human':
+    # Tự làm mới để thấy tin người trực (đặc tả 05 mục 3: ≤ 5 giây)
+    @st.fragment(run_every=3)
+    def live():
+        fresh = api.get_conversation(state.conversation_id)
+        for message in fresh['messages']:
+            render(message)
+        status = fresh['conversation']['status']
+        if status == 'waiting':
+            st.info('🧑‍⚕️ Đang chờ người trực tiếp nhận. Bạn vẫn có thể nhắn thêm thông tin.')
+        elif status == 'closed':
+            st.caption('Cuộc trò chuyện đã kết thúc. Nhắn tiếp trong 24 giờ để được hỗ trợ thêm.')
+
+    live()
+    text = st.chat_input('Nhắn cho người trực...')
+    if text:
+        for event in api.send_message(state.conversation_id, text):
+            if event['type'] == 'conversation':      # quá 24 giờ: chuyển sang cuộc chat mới
+                state.conversation_id = event['id']
+                st.toast(event['detail'])
+            elif event['type'] == 'error':
+                st.error(event['detail'])
+        st.rerun()
+    st.stop()
+
 for message in view['messages']:
     render(message)
-
-if conversation['mode'] == 'human':
-    st.info('🧑‍⚕️ Cuộc trò chuyện đang chờ người trực. Người trực sẽ phản hồi sớm nhất có thể.')
-    st.caption('Giai đoạn hiện tại (P1) chưa có giao diện người trực; phần này hoạt động từ P2.')
-    st.stop()
 
 st.button('🧑‍⚕️ Chuyển sang người trực', on_click=go_human)      # UI-1.2
 

@@ -18,6 +18,12 @@ DEFAULT_SETTINGS = {
     'min_score': MIN_SCORE,
     # Bộ quy tắc phân tầng (phan-tang.md) chỉ bật khi Hội đồng đã duyệt
     'tiering_rules_enabled': False,
+    # Người trực (P2)
+    'sla_normal_s': 300,                 # BR-05: chờ quá 5 phút -> cảnh báo
+    'sla_emergency_s': 60,
+    'reopen_window_h': 24,               # BR-06
+    'guard_block_mode': 'confirm',       # confirm | hard (Q-10: thí điểm = confirm)
+    'guard_confirm_when_unavailable': True,
 }
 
 # Ngân sách system prompt (technical plan 5.2): ~2.500 token ≈ 6.250 ký tự (2,5 ký tự/token)

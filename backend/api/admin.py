@@ -160,3 +160,84 @@ def search(q: str, method: str = 'hybrid', k: int = 10, collection: Optional[str
                           use_dense=(method == 'hybrid' and core.index.has_vectors(collection)),
                           collection=collection, min_score=None)
     return {'results': result['results'], 'warning': result.get('warning')}
+
+
+# ---------- nhân sự & quyền (P2; trang phân quyền đầy đủ ở P3) ----------
+
+class StaffCreate(BaseModel):
+    username: str
+    display_name: str
+    password: str
+    title: str = ''
+    roles: list[str] = ['operator']
+
+
+class CredentialUpdate(BaseModel):
+    credential: dict
+    verify: bool = False
+
+
+class GrantRequest(BaseModel):
+    key: str
+    value: Any
+    reason: str
+    effective_from: Optional[str] = None
+    effective_to: Optional[str] = None
+
+
+class PasswordUpdate(BaseModel):
+    password: str
+
+
+class ActiveUpdate(BaseModel):
+    active: bool
+
+
+def _staff_out(core, staff):
+    return {**staff.model_dump(mode='json', exclude={'password_hash'}),
+            'effective': core.permissions.effective(staff.id),
+            'presence': core.permissions.presence(staff.id)}
+
+
+@router.get('/staff')
+def list_staff(core=Depends(get_core)):
+    return [_staff_out(core, s) for s in core.storage.staff.all()]
+
+
+@router.post('/staff')
+def create_staff(body: StaffCreate, core=Depends(get_core), actor=Depends(require_admin)):
+    staff = core.permissions.create_staff(body.username, body.display_name, body.password, actor,
+                                          body.title, body.roles)
+    return _staff_out(core, staff)
+
+
+@router.put('/staff/{staff_id}/credential')
+def set_credential(staff_id: str, body: CredentialUpdate, core=Depends(get_core),
+                   actor=Depends(require_admin)):
+    return _staff_out(core, core.permissions.set_credential(staff_id, body.credential, actor,
+                                                            body.verify))
+
+
+@router.post('/staff/{staff_id}/grants')
+def grant(staff_id: str, body: GrantRequest, core=Depends(get_core), actor=Depends(require_admin)):
+    core.permissions.grant(staff_id, body.key, body.value, actor, body.reason,
+                           body.effective_from, body.effective_to)
+    return _staff_out(core, core.storage.staff.get(staff_id))
+
+
+@router.get('/staff/{staff_id}/grants')
+def grants(staff_id: str, core=Depends(get_core)):
+    return [g.model_dump(mode='json') for g in core.storage.permissions.for_staff(staff_id)]
+
+
+@router.put('/staff/{staff_id}/password')
+def password(staff_id: str, body: PasswordUpdate, core=Depends(get_core),
+             actor=Depends(require_admin)):
+    core.permissions.set_password(staff_id, body.password, actor)
+    return {'ok': True}
+
+
+@router.put('/staff/{staff_id}/active')
+def active(staff_id: str, body: ActiveUpdate, core=Depends(get_core), actor=Depends(require_admin)):
+    core.permissions.set_active(staff_id, body.active, actor)
+    return _staff_out(core, core.storage.staff.get(staff_id))

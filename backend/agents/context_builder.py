@@ -22,7 +22,9 @@ LABELS = {SenderType.end_user: 'Khách', SenderType.ai: 'AI',
 
 PROFILE_LABELS = {'age': 'Tuổi', 'sex': 'Giới', 'pregnant_or_breastfeeding': 'Mang thai / cho con bú',
                   'allergies': 'Dị ứng', 'conditions': 'Bệnh nền',
-                  'current_medications': 'Thuốc đang dùng'}
+                  'current_medications': 'Thuốc đang dùng', 'chief_complaint': 'Triệu chứng chính',
+                  'onset': 'Khởi phát', 'severity': 'Mức độ',
+                  'needs_confirmation': 'Cần xác nhận'}
 
 
 def tokens(text):
@@ -39,7 +41,13 @@ def truncate(text, token_budget):
 
 
 def profile_text(conversation):
-    lines = [f'- {PROFILE_LABELS[k]}: {v}' for k, v in conversation.profile.model_dump().items() if v]
+    lines = []
+    for key, value in conversation.profile.model_dump().items():
+        if value:
+            value = '; '.join(value) if isinstance(value, list) else value
+            source = conversation.profile_sources.get(key)
+            mark = ' (người trực đã xác nhận)' if source == 'staff' else ''
+            lines.append(f'- {PROFILE_LABELS[key]}: {value}{mark}')
     text = '\n'.join(lines)
     if conversation.summary:
         text += f'\nTÓM TẮT TRƯỚC ĐÓ: {conversation.summary}'

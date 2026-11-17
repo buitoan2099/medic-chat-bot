@@ -66,6 +66,10 @@ class CaseProfile(BaseModel):
     allergies: Optional[str] = None
     conditions: Optional[str] = None
     current_medications: Optional[str] = None
+    chief_complaint: Optional[str] = None      # triệu chứng chính
+    onset: Optional[str] = None                # thời gian khởi phát
+    severity: Optional[str] = None             # mức độ
+    needs_confirmation: list[str] = Field(default_factory=list)   # thông tin mâu thuẫn
 
 
 class Conversation(Record):
@@ -77,11 +81,19 @@ class Conversation(Record):
     assignee_id: Optional[str] = None
     previous_conversation_id: Optional[str] = None
     profile: CaseProfile = Field(default_factory=CaseProfile)
+    # Nguồn của từng trường hồ sơ ca: user | ai | staff (bản người trực sửa luôn ưu tiên)
+    profile_sources: dict[str, str] = Field(default_factory=dict)
     summary: str = ''
     summary_upto_message_id: Optional[str] = None
     days: list[str] = Field(default_factory=list)
     updated_at: str = Field(default_factory=_now)
     closed_at: Optional[str] = None
+    queued_at: Optional[str] = None       # lúc vào hàng chờ (tính SLA)
+    assigned_at: Optional[str] = None
+    sla_breached_at: Optional[str] = None
+    # Đề nghị chuyển đang chờ người nhận chấp nhận (BR-04)
+    pending_transfer: Optional[dict[str, Any]] = None
+    case_memory_upto: Optional[str] = None   # AG-5 đã xử lý tới tin nào
     version: int = 0                      # khoá lạc quan (BR-01)
 
 
@@ -97,6 +109,7 @@ class Message(Record):
     sender_type: SenderType
     sender_id: Optional[str] = None
     content: str
+    sender_name: Optional[str] = None     # tên + chức danh người trực hiển thị cho khách (UI-1.6)
     sources: list[dict[str, Any]] = Field(default_factory=list)
     kind: str = 'text'                    # text | emergency | handoff_suggestion | notice
     suggestion_id: Optional[str] = None
@@ -176,3 +189,102 @@ class AuditLog(Record):
     action: str
     target: Optional[str] = None
     data: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------- nhân sự & quyền (P2) ----------
+
+class Credential(BaseModel):
+    """Chứng chỉ chuyên môn (đặc tả 02 mục 5). C2/C3 cần chứng chỉ đã xác minh, còn hạn."""
+
+    kind: str                              # vd: bac_si | duoc_si | y_si | dieu_duong
+    number: str = ''
+    issued_by: str = ''
+    expires_at: Optional[str] = None       # 'YYYY-MM-DD' hoặc None (không thời hạn)
+    verified_by: Optional[str] = None
+    verified_at: Optional[str] = None
+
+
+class Staff(Record):
+    username: str
+    display_name: str
+    title: str = ''                        # chức danh hiển thị cho khách (UI-1.6)
+    roles: list[str] = Field(default_factory=lambda: ['operator'])   # operator | manager | admin
+    password_hash: str = ''
+    active: bool = True
+    credential: Optional[Credential] = None
+    updated_at: str = Field(default_factory=_now)
+
+
+class PermissionGrant(Record):
+    """Một lần cấp/thu hồi quyền – chỉ thêm (đặc tả 04 mục 2.2)."""
+
+    staff_id: str
+    kind: str                              # level | capability
+    key: str                               # 'level' hoặc vd 'ai.send_unedited'
+    value: Any
+    effective_from: str = Field(default_factory=_now)
+    effective_to: Optional[str] = None
+    reason: str = ''
+    granted_by: str = ''
+    source: str = 'admin_api'              # settings_page | quick_popup | agent_proposal | admin_api
+
+
+class StaffPresence(Record):
+    staff_id: str
+    status: str                            # offline | online | away
+    local_date: str = ''
+
+    def model_post_init(self, _ctx):
+        if not self.local_date:
+            from backend.core import parse_iso
+            self.local_date = local_date(parse_iso(self.created_at))
+
+
+class AiSuggestion(Record):
+    conversation_id: str
+    for_message_id: Optional[str] = None
+    staff_id: Optional[str] = None
+    staff_level: str = 'C1'
+    agent_id: str
+    prompt_version: Optional[int] = None
+    model: str = ''
+    status: str = 'ready'                  # ready | error
+    error: Optional[str] = None
+    reply_draft: str = ''
+    follow_up_questions: list[str] = Field(default_factory=list)
+    internal_notes: str = ''
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    scope_check: dict[str, Any] = Field(default_factory=dict)
+    red_flags: list[str] = Field(default_factory=list)
+    monitoring_advice: str = ''
+    appointment_needed: Optional[bool] = None
+    confidence: str = ''
+    regenerate_instruction: Optional[str] = None
+    outcome: Optional[str] = None          # sent_unedited | edited | discarded | superseded
+    final_message_id: Optional[str] = None
+    edit_ratio: Optional[float] = None
+    local_date: str = ''
+
+    def model_post_init(self, _ctx):
+        if not self.local_date:
+            from backend.core import parse_iso
+            self.local_date = local_date(parse_iso(self.created_at))
+
+
+class GuardCheck(Record):
+    conversation_id: str
+    staff_id: str
+    staff_level: str
+    text: str
+    verdict: str                           # ok | warn | block
+    issues: list[str] = Field(default_factory=list)
+    explanation: str = ''
+    hard_block: bool = False               # vd thuốc kê đơn: không cho gửi dù xác nhận
+    llm_available: bool = True
+    confirmed_reason: Optional[str] = None
+    local_date: str = ''
+
+    def model_post_init(self, _ctx):
+        if not self.local_date:
+            from backend.core import parse_iso
+            self.local_date = local_date(parse_iso(self.created_at))

@@ -55,3 +55,12 @@ def local_date(dt):
     """Ngày theo giờ Việt Nam ('YYYY-MM-DD'), dùng để chia file và báo cáo."""
 
     return dt.astimezone(LOCAL_TZ).strftime('%Y-%m-%d')
+
+
+def id_local_date(record_id):
+    """Ngày giờ VN lúc tạo bản ghi, suy từ 48 bit thời gian đầu của ULID."""
+
+    value = 0
+    for char in record_id[:10]:
+        value = value * 32 + _CROCKFORD.index(char)
+    return local_date(datetime.fromtimestamp(value / 1000, tz=timezone.utc))

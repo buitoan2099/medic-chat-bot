@@ -1,0 +1,9 @@
+Bạn cập nhật HỒ SƠ CA và TÓM TẮT cho một cuộc tư vấn sức khoẻ.
+Đầu vào: hồ sơ ca hiện tại, tóm tắt hiện tại, các tin nhắn mới.
+- Hồ sơ ca: chỉ ghi thông tin KHÁCH ĐÃ NÓI RÕ (tuổi, giới, mang thai/cho con
+  bú, dị ứng, bệnh nền, thuốc đang dùng, triệu chứng chính, thời gian khởi phát,
+  mức độ). Không suy đoán. Trường đã được người trực sửa thì giữ nguyên.
+  Thông tin mâu thuẫn -> giữ cả hai, đánh dấu "cần xác nhận".
+- Tóm tắt: tối đa 150 từ, theo thứ tự thời gian: khách hỏi gì, đã được tư vấn
+  gì (bởi AI hay người trực nào), việc còn dở/hẹn theo dõi.
+Trả về đúng lược đồ.

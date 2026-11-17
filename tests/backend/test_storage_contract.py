@@ -127,3 +127,54 @@ def test_settings_roundtrip(storage):
     assert storage.config.get_settings() == {}
     storage.config.save_settings({'active_collection': 'x'})
     assert storage.config.get_settings()['active_collection'] == 'x'
+
+
+# ---------- P2: nhân sự, quyền, gợi ý, kiểm tra ----------
+
+from backend.core import id_local_date  # noqa: E402
+from backend.domain import AiSuggestion, GuardCheck, PermissionGrant, Staff, StaffPresence  # noqa: E402
+
+
+def test_id_local_date_matches_creation_day():
+    record = AiSuggestion(conversation_id='c', agent_id='a')
+    assert id_local_date(record.id) == record.local_date
+
+
+def test_staff_unique_username_and_update(storage):
+    staff = storage.staff.add(Staff(username='lan', display_name='Lan'))
+    with pytest.raises(ValueError):
+        storage.staff.add(Staff(username='lan', display_name='Lan 2'))
+    staff.title = 'Dược sĩ'
+    storage.staff.update(staff)
+    assert storage.staff.by_username('lan').title == 'Dược sĩ'
+    assert len(storage.staff.all()) == 1
+
+
+def test_permission_history_append_only(storage):
+    storage.permissions.add(PermissionGrant(staff_id='s1', kind='level', key='level', value='C1'))
+    storage.permissions.add(PermissionGrant(staff_id='s1', kind='level', key='level', value='C2'))
+    storage.permissions.add(PermissionGrant(staff_id='s2', kind='level', key='level', value='C3'))
+    assert [g.value for g in storage.permissions.for_staff('s1')] == ['C1', 'C2']
+
+
+def test_presence_current(storage):
+    storage.presence.add(StaffPresence(staff_id='s1', status='online'))
+    storage.presence.add(StaffPresence(staff_id='s1', status='away'))
+    assert storage.presence.current()['s1'].status == 'away'
+
+
+def test_suggestion_update_latest_wins(storage):
+    suggestion = storage.suggestions.add(AiSuggestion(conversation_id='c1', agent_id='ag2'))
+    suggestion.outcome = 'edited'
+    storage.suggestions.update(suggestion)
+    assert storage.suggestions.get(suggestion.id).outcome == 'edited'
+    found = storage.suggestions.for_conversation('c1', [suggestion.local_date])
+    assert len(found) == 1 and found[0].outcome == 'edited'
+
+
+def test_guard_check_roundtrip(storage):
+    check = storage.guard_checks.add(GuardCheck(conversation_id='c1', staff_id='s1', staff_level='C1',
+                                                text='x', verdict='block'))
+    check.confirmed_reason = 'đã hỏi bác sĩ'
+    storage.guard_checks.update(check)
+    assert storage.guard_checks.get(check.id).confirmed_reason == 'đã hỏi bác sĩ'

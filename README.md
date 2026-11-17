@@ -62,6 +62,13 @@ streamlit run ui/Home.py
 
 - Trang **Cấu hình model** cần `ADMIN_TOKEN` trong `.env`. Trên trang này có: chọn model cho từng agent, phiên bản prompt, cài đặt, dựng lại chỉ mục **không gián đoạn** (dựng song song rồi mới chuyển sang).
 - Không có Ollama thì hệ thống vẫn chạy: tìm tài liệu bằng BM25, còn câu hỏi được chuyển sang người trực theo mặc định an toàn.
+- **Người trực (P2):** trang *Người trực* trong giao diện. Tạo tài khoản khi backend đang chạy:
+  ```bash
+  python -m scripts.staff create lan "Nguyễn Lan" --title "Dược sĩ"
+  python -m scripts.staff credential lan --kind duoc_si --expires 2030-12-31 --verify
+  python -m scripts.staff grant lan level C2 --reason "Đã xác minh chứng chỉ"
+  ```
+  Cần `AUTH_SECRET` trong `.env` để phiên đăng nhập không mất khi khởi động lại backend.
 - `app.py` là giao diện cũ (một trang, tự mở Qdrant). **Không chạy cùng lúc với backend.** Sẽ bỏ khi hết P1.
 
 ## Kiểm thử

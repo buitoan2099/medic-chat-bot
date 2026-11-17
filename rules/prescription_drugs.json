@@ -1,0 +1,6 @@
+{
+  "version": 0,
+  "status": "cho-danh-muc-chinh-thuc",
+  "note": "Danh mục thuốc kê đơn để kiểm tra theo quy tắc (đặc tả 03 mục 6, câu hỏi Q-2). CHƯA CÓ: đơn vị cung cấp bản số hoá danh mục thuốc kê đơn hiện hành của Bộ Y tế. Khi danh sách trống, việc phát hiện thuốc kê đơn chỉ dựa vào AG-6 (LLM). Không tự soạn danh sách này.",
+  "drugs": []
+}

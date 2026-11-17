@@ -20,6 +20,23 @@ def get_core(request: Request):
     return request.app.state.core
 
 
+def current_staff(request: Request, authorization: Optional[str] = Header(default=None)):
+    """Nhân sự đăng nhập: header Authorization: Bearer <token>."""
+
+    if not authorization or not authorization.lower().startswith('bearer '):
+        raise HTTPException(401, 'Chưa đăng nhập')
+    from backend.services.auth import AuthError
+    core = request.app.state.core
+    try:
+        staff_id = core.signer.verify(authorization.split(' ', 1)[1].strip())
+        staff = core.storage.staff.get(staff_id)
+    except (AuthError, KeyError):
+        raise HTTPException(401, 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn')
+    if not staff.active:
+        raise HTTPException(401, 'Tài khoản đã bị khoá')
+    return staff
+
+
 def require_admin(x_admin_token: Optional[str] = Header(default=None)):
     """P1: khoá quản trị trong .env (ADMIN_TOKEN). P2 thay bằng đăng nhập nhân sự."""
 

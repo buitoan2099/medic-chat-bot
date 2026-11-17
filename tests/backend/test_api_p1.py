@@ -52,7 +52,8 @@ def setup(tmp_path, monkeypatch):
 
     def factory():
         return build_state(storage_dir=tmp_path / 'storage',
-                           adapters={'ollama': adapter, 'fake': adapter}, qdrant=False)
+                           adapters={'ollama': adapter, 'fake': adapter}, qdrant=False,
+                           background='inline', auth_secret='test-secret')
 
     with TestClient(create_app(factory)) as client:
         yield client, responder, adapter
@@ -136,15 +137,17 @@ def test_llm_down_falls_back_to_safe_default(setup):
     assert [e['message'] for e in ev if e['type'] == 'message'][-1]['kind'] == 'handoff_suggestion'
 
 
-def test_handoff_moves_to_queue_and_blocks_ai_mode(setup):
-    client, *_ = setup
+def test_handoff_moves_to_queue_and_stops_ai_answers(setup):
+    client, responder, _ = setup
     conv_id = start(client)
     conv = client.post(f'/api/chat/conversations/{conv_id}/handoff').json()
     assert conv['conversation']['mode'] == 'human'
     assert conv['conversation']['status'] == 'waiting'
     assert conv['messages'][-1]['kind'] == 'notice'
     ev = send(client, conv_id, 'còn câu hỏi khác')
-    assert ev[0]['type'] == 'error'
+    assert [e['type'] for e in ev if e['type'] != 'end'] == ['message']   # AI không trả lời
+    assert ev[0]['message']['sender_type'] == 'end_user'
+    assert responder.answer_calls == 0
 
 
 def test_unknown_conversation_404(setup):
@@ -163,7 +166,7 @@ def test_admin_requires_token(setup):
 def test_admin_change_model_and_prompt_takes_effect(setup):
     client, _, adapter = setup
     agents = client.get('/api/admin/agents', headers=ADMIN).json()
-    assert set(agents) == {'ag0_triage', 'ag1_user_ai'}
+    assert {'ag0_triage', 'ag1_user_ai', 'ag3_copilot_c2', 'ag6_guard'} <= set(agents)
 
     response = client.put('/api/admin/agents/ag1_user_ai', headers=ADMIN,
                           json={'changes': {'model': 'qwen3:4b'}})

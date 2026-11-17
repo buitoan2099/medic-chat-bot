@@ -124,3 +124,77 @@ class Admin:
 
     def rollback(self):
         return self._send('POST', '/api/admin/index/rollback')
+
+
+# ---------- khung 2: người trực ----------
+
+def operator_login(username, password):
+    with _client() as c:
+        return _check(c.post('/api/operator/login', json={'username': username, 'password': password}))
+
+
+class Operator:
+    def __init__(self, token):
+        self.headers = {'Authorization': f'Bearer {token}'}
+
+    def _req(self, method, path, body=None, timeout=60.0):
+        with httpx.Client(base_url=BACKEND_URL, headers=self.headers, timeout=timeout) as c:
+            return _check(c.request(method, path, json=body))
+
+    def me(self):
+        return self._req('GET', '/api/operator/me')
+
+    def presence(self, status, force=False):
+        return self._req('PUT', '/api/operator/presence', {'status': status, 'force': force})
+
+    def online_staff(self):
+        return self._req('GET', '/api/operator/staff/online')
+
+    def queue(self):
+        return self._req('GET', '/api/operator/queue')
+
+    def mine(self):
+        return self._req('GET', '/api/operator/mine')
+
+    def view(self, conversation_id):
+        return self._req('GET', f'/api/operator/conversations/{conversation_id}')
+
+    def claim(self, conversation_id):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/claim')
+
+    def check(self, conversation_id, text):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/check',
+                         {'text': text}, timeout=120.0)
+
+    def send(self, conversation_id, text, suggestion_id=None, guard_check_id=None,
+             confirm_reason=None):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/send',
+                         {'text': text, 'suggestion_id': suggestion_id,
+                          'guard_check_id': guard_check_id, 'confirm_reason': confirm_reason},
+                         timeout=120.0)
+
+    def regenerate(self, conversation_id, instruction=None):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/suggestions',
+                         {'instruction': instruction})
+
+    def discard(self, suggestion_id):
+        return self._req('POST', f'/api/operator/suggestions/{suggestion_id}/discard')
+
+    def transfer(self, conversation_id, to_staff_id, note):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/transfer',
+                         {'to_staff_id': to_staff_id, 'note': note})
+
+    def respond_transfer(self, conversation_id, accept):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/transfer/respond',
+                         {'accept': accept})
+
+    def escalate(self, conversation_id, level, reason):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/escalate',
+                         {'level': level, 'reason': reason})
+
+    def close(self, conversation_id):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/close')
+
+    def update_profile(self, conversation_id, fields):
+        return self._req('PUT', f'/api/operator/conversations/{conversation_id}/profile',
+                         {'fields': fields})

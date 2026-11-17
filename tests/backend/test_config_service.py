@@ -1,6 +1,6 @@
 import pytest
 
-from backend.agents.registry import AG0_TRIAGE, AG1_USER_AI
+from backend.agents.registry import AG1_USER_AI, AGENT_DEFAULTS
 from backend.core import local_date, utc_now
 from backend.services.config_service import ConfigError, ConfigService
 from backend.storage.local import LocalStorage
@@ -14,7 +14,7 @@ def service(tmp_path):
 
 
 def test_seed_creates_agents_prompts_and_settings(service):
-    assert set(service.agents()) == {AG0_TRIAGE, AG1_USER_AI}
+    assert set(service.agents()) == set(AGENT_DEFAULTS)
     text, version = service.prompt(AG1_USER_AI)
     assert version == 1 and '[AN-TOÀN – BẮT BUỘC' in text
     assert service.settings()['tiering_rules_enabled'] is False
