@@ -1,0 +1,147 @@
+{"question": "Đang cho con bú có dùng Vancomycin được không?", "type": "generic", "drug": "Vancomycin", "drug_id": 669, "section": "Thời kỳ cho con bú", "page_start": 1455, "page_end": 1459}
+{"question": "Cách dùng và liều lượng của Vancomycin?", "type": "generic", "drug": "Vancomycin", "drug_id": 669, "section": "Liều lượng và cách dùng", "page_start": 1455, "page_end": 1459}
+{"question": "Vancomycin được dùng để điều trị bệnh gì?", "type": "generic", "drug": "Vancomycin", "drug_id": 669, "section": "Chỉ định", "page_start": 1455, "page_end": 1459}
+{"question": "lieu dung cefapirin natri cho nguoi lon nhu the nao?", "type": "no_accent", "drug": "Cefapirin natri", "drug_id": 115, "section": "Liều lượng và cách dùng", "page_start": 341, "page_end": 343}
+{"question": "nhung truong hop nao khong duoc dung cefapirin natri?", "type": "no_accent", "drug": "Cefapirin natri", "drug_id": 115, "section": "Chống chỉ định", "page_start": 341, "page_end": 343}
+{"question": "phu nu mang thai co dung duoc cefapirin natri khong?", "type": "no_accent", "drug": "Cefapirin natri", "drug_id": 115, "section": "Thời kỳ mang thai", "page_start": 341, "page_end": 343}
+{"question": "DHNPATP Tab. tương tác với những thuốc nào?", "type": "brand", "drug": "Adenosin", "drug_id": 25, "section": "Tương tác thuốc", "page_start": 147, "page_end": 149}
+{"question": "Cách dùng và liều lượng của Adecard?", "type": "brand", "drug": "Adenosin", "drug_id": 25, "section": "Liều lượng và cách dùng", "page_start": 147, "page_end": 149}
+{"question": "Bảo quản Ampecyclal như thế nào?", "type": "brand", "drug": "Adenosin", "drug_id": 25, "section": "Độ ổn định và bảo quản", "page_start": 147, "page_end": 149}
+{"question": "Flurazepam tương tác với những thuốc nào?", "type": "generic", "drug": "Flurazepam", "drug_id": 283, "section": "Tương tác thuốc", "page_start": 688, "page_end": 690}
+{"question": "Phụ nữ mang thai có dùng được Flurazepam không?", "type": "generic", "drug": "Flurazepam", "drug_id": 283, "section": "Thời kỳ mang thai", "page_start": 688, "page_end": 690}
+{"question": "Flurazepam có tác dụng phụ gì?", "type": "generic", "drug": "Flurazepam", "drug_id": 283, "section": "Tác dụng không mong muốn (ADR)", "page_start": 688, "page_end": 690}
+{"question": "tac dung khong mong muon cua ethambutol", "type": "no_accent", "drug": "Ethambutol", "drug_id": 252, "section": "Tác dụng không mong muốn (ADR)", "page_start": 631, "page_end": 633}
+{"question": "qua lieu ethambutol thi xu tri the nao?", "type": "no_accent", "drug": "Ethambutol", "drug_id": 252, "section": "Quá liều và xử trí", "page_start": 631, "page_end": 633}
+{"question": "ethambutol tuong tac voi nhung thuoc nao?", "type": "no_accent", "drug": "Ethambutol", "drug_id": 252, "section": "Tương tác thuốc", "page_start": 631, "page_end": 633}
+{"question": "Chống chỉ định của Tpenatec là gì?", "type": "brand", "drug": "Enalapril", "drug_id": 230, "section": "Chống chỉ định", "page_start": 582, "page_end": 586}
+{"question": "Enassel tương tác với những thuốc nào?", "type": "brand", "drug": "Enalapril", "drug_id": 230, "section": "Tương tác thuốc", "page_start": 582, "page_end": 586}
+{"question": "Đang cho con bú có dùng Benalapril 5 được không?", "type": "brand", "drug": "Enalapril", "drug_id": 230, "section": "Thời kỳ cho con bú", "page_start": 582, "page_end": 586}
+{"question": "Chỉ định của Clioquinol", "type": "generic", "drug": "Clioquinol", "drug_id": 143, "section": "Chỉ định", "page_start": 410, "page_end": 411}
+{"question": "Phụ nữ mang thai có dùng được Clioquinol không?", "type": "generic", "drug": "Clioquinol", "drug_id": 143, "section": "Thời kỳ mang thai", "page_start": 410, "page_end": 411}
+{"question": "Đang cho con bú có dùng Clioquinol được không?", "type": "generic", "drug": "Clioquinol", "drug_id": 143, "section": "Thời kỳ cho con bú", "page_start": 410, "page_end": 411}
+{"question": "dang cho con bu co dung carbamazepin duoc khong?", "type": "no_accent", "drug": "Carbamazepin", "drug_id": 105, "section": "Thời kỳ cho con bú", "page_start": 316, "page_end": 320}
+{"question": "qua lieu carbamazepin thi xu tri the nao?", "type": "no_accent", "drug": "Carbamazepin", "drug_id": 105, "section": "Quá liều và xử trí", "page_start": 316, "page_end": 320}
+{"question": "lieu dung carbamazepin cho nguoi lon nhu the nao?", "type": "no_accent", "drug": "Carbamazepin", "drug_id": 105, "section": "Liều lượng và cách dùng", "page_start": 316, "page_end": 320}
+{"question": "Bảo quản Rocuronium-hameln như thế nào?", "type": "brand", "drug": "Rocuronium bromid", "drug_id": 566, "section": "Độ ổn định và bảo quản", "page_start": 1256, "page_end": 1258}
+{"question": "Chỉ định của Rocuronium Kabi", "type": "brand", "drug": "Rocuronium bromid", "drug_id": 566, "section": "Chỉ định", "page_start": 1256, "page_end": 1258}
+{"question": "Phụ nữ mang thai có dùng được Rocuronium-hameln không?", "type": "brand", "drug": "Rocuronium bromid", "drug_id": 566, "section": "Thời kỳ mang thai", "page_start": 1256, "page_end": 1258}
+{"question": "Liều dùng Bupivacain hydroclorid cho người lớn như thế nào?", "type": "generic", "drug": "Bupivacain hydroclorid", "drug_id": 89, "section": "Liều lượng và cách dùng", "page_start": 276, "page_end": 278}
+{"question": "Chống chỉ định của Bupivacain hydroclorid là gì?", "type": "generic", "drug": "Bupivacain hydroclorid", "drug_id": 89, "section": "Chống chỉ định", "page_start": 276, "page_end": 278}
+{"question": "Đang cho con bú có dùng Bupivacain hydroclorid được không?", "type": "generic", "drug": "Bupivacain hydroclorid", "drug_id": 89, "section": "Thời kỳ cho con bú", "page_start": 276, "page_end": 278}
+{"question": "dang cho con bu co dung tetracyclin duoc khong?", "type": "no_accent", "drug": "Tetracyclin", "drug_id": 612, "section": "Thời kỳ cho con bú", "page_start": 1349, "page_end": 1351}
+{"question": "chi dinh cua tetracyclin", "type": "no_accent", "drug": "Tetracyclin", "drug_id": 612, "section": "Chỉ định", "page_start": 1349, "page_end": 1351}
+{"question": "nhung truong hop nao khong duoc dung tetracyclin?", "type": "no_accent", "drug": "Tetracyclin", "drug_id": 612, "section": "Chống chỉ định", "page_start": 1349, "page_end": 1351}
+{"question": "Bảo quản Moxipex 400 như thế nào?", "type": "brand", "drug": "Moxifloxacin hydroclorid", "drug_id": 439, "section": "Độ ổn định và bảo quản", "page_start": 1011, "page_end": 1013}
+{"question": "Moxipex 400 được dùng để điều trị bệnh gì?", "type": "brand", "drug": "Moxifloxacin hydroclorid", "drug_id": 439, "section": "Chỉ định", "page_start": 1011, "page_end": 1013}
+{"question": "Quá liều Praxinstad thì xử trí thế nào?", "type": "brand", "drug": "Moxifloxacin hydroclorid", "drug_id": 439, "section": "Quá liều và xử trí", "page_start": 1011, "page_end": 1013}
+{"question": "Phụ nữ mang thai có dùng được Alfuzosin hydroclorid không?", "type": "generic", "drug": "Alfuzosin hydroclorid", "drug_id": 32, "section": "Thời kỳ mang thai", "page_start": 158, "page_end": 160}
+{"question": "Liều dùng Alfuzosin hydroclorid cho người lớn như thế nào?", "type": "generic", "drug": "Alfuzosin hydroclorid", "drug_id": 32, "section": "Liều lượng và cách dùng", "page_start": 158, "page_end": 160}
+{"question": "Tác dụng không mong muốn của Alfuzosin hydroclorid", "type": "generic", "drug": "Alfuzosin hydroclorid", "drug_id": 32, "section": "Tác dụng không mong muốn (ADR)", "page_start": 158, "page_end": 160}
+{"question": "chong chi dinh cua aldesleukin la gi?", "type": "no_accent", "drug": "Aldesleukin", "drug_id": 30, "section": "Chống chỉ định", "page_start": 154, "page_end": 157}
+{"question": "aldesleukin duoc dung de dieu tri benh gi?", "type": "no_accent", "drug": "Aldesleukin", "drug_id": 30, "section": "Chỉ định", "page_start": 154, "page_end": 157}
+{"question": "qua lieu aldesleukin thi xu tri the nao?", "type": "no_accent", "drug": "Aldesleukin", "drug_id": 30, "section": "Quá liều và xử trí", "page_start": 154, "page_end": 157}
+{"question": "Bảo quản Biocalcium như thế nào?", "type": "brand", "drug": "Calci lactat", "drug_id": 96, "section": "Độ ổn định và bảo quản", "page_start": 296, "page_end": 298}
+{"question": "Calcium lactate tương tác với những thuốc nào?", "type": "brand", "drug": "Calci lactat", "drug_id": 96, "section": "Tương tác thuốc", "page_start": 296, "page_end": 298}
+{"question": "Cách dùng và liều lượng của Calci lactat trihydrat?", "type": "brand", "drug": "Calci lactat", "drug_id": 96, "section": "Liều lượng và cách dùng", "page_start": 296, "page_end": 298}
+{"question": "Những trường hợp nào không được dùng Doxorubicin?", "type": "generic", "drug": "Doxorubicin", "drug_id": 225, "section": "Chống chỉ định", "page_start": 571, "page_end": 573}
+{"question": "Liều dùng Doxorubicin cho người lớn như thế nào?", "type": "generic", "drug": "Doxorubicin", "drug_id": 225, "section": "Liều lượng và cách dùng", "page_start": 571, "page_end": 573}
+{"question": "Doxorubicin có tác dụng phụ gì?", "type": "generic", "drug": "Doxorubicin", "drug_id": 225, "section": "Tác dụng không mong muốn (ADR)", "page_start": 571, "page_end": 573}
+{"question": "ertapenem natri tuong tac voi nhung thuoc nao?", "type": "no_accent", "drug": "Ertapenem natri", "drug_id": 240, "section": "Tương tác thuốc", "page_start": 605, "page_end": 607}
+{"question": "lieu dung ertapenem natri cho nguoi lon nhu the nao?", "type": "no_accent", "drug": "Ertapenem natri", "drug_id": 240, "section": "Liều lượng và cách dùng", "page_start": 605, "page_end": 607}
+{"question": "chong chi dinh cua ertapenem natri la gi?", "type": "no_accent", "drug": "Ertapenem natri", "drug_id": 240, "section": "Chống chỉ định", "page_start": 605, "page_end": 607}
+{"question": "Prazintel có tác dụng phụ gì?", "type": "brand", "drug": "Praziquantel", "drug_id": 525, "section": "Tác dụng không mong muốn (ADR)", "page_start": 1169, "page_end": 1171}
+{"question": "Quá liều Distocide thì xử trí thế nào?", "type": "brand", "drug": "Praziquantel", "drug_id": 525, "section": "Quá liều và xử trí", "page_start": 1169, "page_end": 1171}
+{"question": "Prazintel được dùng để điều trị bệnh gì?", "type": "brand", "drug": "Praziquantel", "drug_id": 525, "section": "Chỉ định", "page_start": 1169, "page_end": 1171}
+{"question": "Đang cho con bú có dùng Ticarcilin được không?", "type": "generic", "drug": "Ticarcilin", "drug_id": 626, "section": "Thời kỳ cho con bú", "page_start": 1376, "page_end": 1378}
+{"question": "Phụ nữ mang thai có dùng được Ticarcilin không?", "type": "generic", "drug": "Ticarcilin", "drug_id": 626, "section": "Thời kỳ mang thai", "page_start": 1376, "page_end": 1378}
+{"question": "Ticarcilin tương tác với những thuốc nào?", "type": "generic", "drug": "Ticarcilin", "drug_id": 626, "section": "Tương tác thuốc", "page_start": 1376, "page_end": 1378}
+{"question": "albendazol tuong tac voi nhung thuoc nao?", "type": "no_accent", "drug": "Albendazol", "drug_id": 27, "section": "Tương tác thuốc", "page_start": 150, "page_end": 152}
+{"question": "lieu dung albendazol cho nguoi lon nhu the nao?", "type": "no_accent", "drug": "Albendazol", "drug_id": 27, "section": "Liều lượng và cách dùng", "page_start": 150, "page_end": 152}
+{"question": "albendazol co tac dung phu gi?", "type": "no_accent", "drug": "Albendazol", "drug_id": 27, "section": "Tác dụng không mong muốn (ADR)", "page_start": 150, "page_end": 152}
+{"question": "Chống chỉ định của Ezeegas là gì?", "type": "brand", "drug": "Simeticon", "drug_id": 582, "section": "Chống chỉ định", "page_start": 1291, "page_end": 1292}
+{"question": "Bảo quản Air-X SF như thế nào?", "type": "brand", "drug": "Simeticon", "drug_id": 582, "section": "Độ ổn định và bảo quản", "page_start": 1291, "page_end": 1292}
+{"question": "Phụ nữ mang thai có dùng được Air-X drops không?", "type": "brand", "drug": "Simeticon", "drug_id": 582, "section": "Thời kỳ mang thai", "page_start": 1291, "page_end": 1292}
+{"question": "Bảo quản Diltiazem như thế nào?", "type": "generic", "drug": "Diltiazem", "drug_id": 205, "section": "Độ ổn định và bảo quản", "page_start": 533, "page_end": 536}
+{"question": "Diltiazem tương tác với những thuốc nào?", "type": "generic", "drug": "Diltiazem", "drug_id": 205, "section": "Tương tác thuốc", "page_start": 533, "page_end": 536}
+{"question": "Diltiazem có tác dụng phụ gì?", "type": "generic", "drug": "Diltiazem", "drug_id": 205, "section": "Tác dụng không mong muốn (ADR)", "page_start": 533, "page_end": 536}
+{"question": "qua lieu xylometazolin thi xu tri the nao?", "type": "no_accent", "drug": "Xylometazolin", "drug_id": 681, "section": "Quá liều và xử trí", "page_start": 1488, "page_end": 1489}
+{"question": "xylometazolin tuong tac voi nhung thuoc nao?", "type": "no_accent", "drug": "Xylometazolin", "drug_id": 681, "section": "Tương tác thuốc", "page_start": 1488, "page_end": 1489}
+{"question": "dang cho con bu co dung xylometazolin duoc khong?", "type": "no_accent", "drug": "Xylometazolin", "drug_id": 681, "section": "Thời kỳ cho con bú", "page_start": 1488, "page_end": 1489}
+{"question": "Cách dùng và liều lượng của Molgramostim?", "type": "generic", "drug": "Molgramostim", "drug_id": 436, "section": "Liều lượng và cách dùng", "page_start": 1002, "page_end": 1003}
+{"question": "Bảo quản Molgramostim như thế nào?", "type": "generic", "drug": "Molgramostim", "drug_id": 436, "section": "Độ ổn định và bảo quản", "page_start": 1002, "page_end": 1003}
+{"question": "Phụ nữ mang thai có dùng được Molgramostim không?", "type": "generic", "drug": "Molgramostim", "drug_id": 436, "section": "Thời kỳ mang thai", "page_start": 1002, "page_end": 1003}
+{"question": "Đang cho con bú có dùng Doxylamin succinat được không?", "type": "generic", "drug": "Doxylamin succinat", "drug_id": 227, "section": "Thời kỳ cho con bú", "page_start": 576, "page_end": 577}
+{"question": "Quá liều Doxylamin succinat thì xử trí thế nào?", "type": "generic", "drug": "Doxylamin succinat", "drug_id": 227, "section": "Quá liều và xử trí", "page_start": 576, "page_end": 577}
+{"question": "Bảo quản Doxylamin succinat như thế nào?", "type": "generic", "drug": "Doxylamin succinat", "drug_id": 227, "section": "Độ ổn định và bảo quản", "page_start": 576, "page_end": 577}
+{"question": "dang cho con bu co dung nifedipin duoc khong?", "type": "no_accent", "drug": "Nifedipin", "drug_id": 466, "section": "Thời kỳ cho con bú", "page_start": 1056, "page_end": 1058}
+{"question": "phu nu mang thai co dung duoc nifedipin khong?", "type": "no_accent", "drug": "Nifedipin", "drug_id": 466, "section": "Thời kỳ mang thai", "page_start": 1056, "page_end": 1058}
+{"question": "bao quan nifedipin nhu the nao?", "type": "no_accent", "drug": "Nifedipin", "drug_id": 466, "section": "Độ ổn định và bảo quản", "page_start": 1056, "page_end": 1058}
+{"question": "Tetracosactide tương tác với những thuốc nào?", "type": "brand", "drug": "Tetracosactid", "drug_id": 611, "section": "Tương tác thuốc", "page_start": 1347, "page_end": 1349}
+{"question": "Quá liều Tetracosactide thì xử trí thế nào?", "type": "brand", "drug": "Tetracosactid", "drug_id": 611, "section": "Quá liều và xử trí", "page_start": 1347, "page_end": 1349}
+{"question": "Liều dùng Tetracosactide cho người lớn như thế nào?", "type": "brand", "drug": "Tetracosactid", "drug_id": 611, "section": "Liều lượng và cách dùng", "page_start": 1347, "page_end": 1349}
+{"question": "Quá liều Folinat calci thì xử trí thế nào?", "type": "generic", "drug": "Folinat calci", "drug_id": 286, "section": "Quá liều và xử trí", "page_start": 694, "page_end": 696}
+{"question": "Liều dùng Folinat calci cho người lớn như thế nào?", "type": "generic", "drug": "Folinat calci", "drug_id": 286, "section": "Liều lượng và cách dùng", "page_start": 694, "page_end": 696}
+{"question": "Chống chỉ định của Folinat calci là gì?", "type": "generic", "drug": "Folinat calci", "drug_id": 286, "section": "Chống chỉ định", "page_start": 694, "page_end": 696}
+{"question": "tac dung khong mong muon cua aciclovir", "type": "no_accent", "drug": "Aciclovir", "drug_id": 6, "section": "Tác dụng không mong muốn (ADR)", "page_start": 114, "page_end": 117}
+{"question": "dang cho con bu co dung aciclovir duoc khong?", "type": "no_accent", "drug": "Aciclovir", "drug_id": 6, "section": "Thời kỳ cho con bú", "page_start": 114, "page_end": 117}
+{"question": "aciclovir tuong tac voi nhung thuoc nao?", "type": "no_accent", "drug": "Aciclovir", "drug_id": 6, "section": "Tương tác thuốc", "page_start": 114, "page_end": 117}
+{"question": "Chống chỉ định của Clomaz-forte là gì?", "type": "brand", "drug": "Clotrimazol", "drug_id": 164, "section": "Chống chỉ định", "page_start": 452, "page_end": 453}
+{"question": "Cách dùng và liều lượng của Zipda?", "type": "brand", "drug": "Clotrimazol", "drug_id": 164, "section": "Liều lượng và cách dùng", "page_start": 452, "page_end": 453}
+{"question": "Cenesthen tương tác với những thuốc nào?", "type": "brand", "drug": "Clotrimazol", "drug_id": 164, "section": "Tương tác thuốc", "page_start": 452, "page_end": 453}
+{"question": "Đang cho con bú có dùng Irinotecan được không?", "type": "generic", "drug": "Irinotecan", "drug_id": 354, "section": "Thời kỳ cho con bú", "page_start": 837, "page_end": 839}
+{"question": "Phụ nữ mang thai có dùng được Irinotecan không?", "type": "generic", "drug": "Irinotecan", "drug_id": 354, "section": "Thời kỳ mang thai", "page_start": 837, "page_end": 839}
+{"question": "Bảo quản Irinotecan như thế nào?", "type": "generic", "drug": "Irinotecan", "drug_id": 354, "section": "Độ ổn định và bảo quản", "page_start": 837, "page_end": 839}
+{"question": "clorpheniramin duoc dung de dieu tri benh gi?", "type": "no_accent", "drug": "Clorpheniramin", "drug_id": 160, "section": "Chỉ định", "page_start": 445, "page_end": 446}
+{"question": "clorpheniramin tuong tac voi nhung thuoc nao?", "type": "no_accent", "drug": "Clorpheniramin", "drug_id": 160, "section": "Tương tác thuốc", "page_start": 445, "page_end": 446}
+{"question": "chong chi dinh cua clorpheniramin la gi?", "type": "no_accent", "drug": "Clorpheniramin", "drug_id": 160, "section": "Chống chỉ định", "page_start": 445, "page_end": 446}
+{"question": "Chống chỉ định của Dionem là gì?", "type": "brand", "drug": "Doripenem", "drug_id": 222, "section": "Chống chỉ định", "page_start": 564, "page_end": 566}
+{"question": "Quá liều Dionem thì xử trí thế nào?", "type": "brand", "drug": "Doripenem", "drug_id": 222, "section": "Quá liều và xử trí", "page_start": 564, "page_end": 566}
+{"question": "Dionem được dùng để điều trị bệnh gì?", "type": "brand", "drug": "Doripenem", "drug_id": 222, "section": "Chỉ định", "page_start": 564, "page_end": 566}
+{"question": "Iodamid meglumin tương tác với những thuốc nào?", "type": "generic", "drug": "Iodamid meglumin", "drug_id": 350, "section": "Tương tác thuốc", "page_start": 827, "page_end": 830}
+{"question": "Đang cho con bú có dùng Iodamid meglumin được không?", "type": "generic", "drug": "Iodamid meglumin", "drug_id": 350, "section": "Thời kỳ cho con bú", "page_start": 827, "page_end": 830}
+{"question": "Chống chỉ định của Iodamid meglumin là gì?", "type": "generic", "drug": "Iodamid meglumin", "drug_id": 350, "section": "Chống chỉ định", "page_start": 827, "page_end": 830}
+{"question": "dang cho con bu co dung calci gluconat duoc khong?", "type": "no_accent", "drug": "Calci gluconat", "drug_id": 95, "section": "Thời kỳ cho con bú", "page_start": 292, "page_end": 296}
+{"question": "phu nu mang thai co dung duoc calci gluconat khong?", "type": "no_accent", "drug": "Calci gluconat", "drug_id": 95, "section": "Thời kỳ mang thai", "page_start": 292, "page_end": 296}
+{"question": "calci gluconat co tac dung phu gi?", "type": "no_accent", "drug": "Calci gluconat", "drug_id": 95, "section": "Tác dụng không mong muốn (ADR)", "page_start": 292, "page_end": 296}
+{"question": "Chỉ định của Parecom", "type": "brand", "drug": "Loperamid", "drug_id": 396, "section": "Chỉ định", "page_start": 918, "page_end": 919}
+{"question": "Đang cho con bú có dùng Diarlomid được không?", "type": "brand", "drug": "Loperamid", "drug_id": 396, "section": "Thời kỳ cho con bú", "page_start": 918, "page_end": 919}
+{"question": "Liều dùng Parecom cho người lớn như thế nào?", "type": "brand", "drug": "Loperamid", "drug_id": 396, "section": "Liều lượng và cách dùng", "page_start": 918, "page_end": 919}
+{"question": "Liều dùng Candesartan cilexetil cho người lớn như thế nào?", "type": "generic", "drug": "Candesartan cilexetil", "drug_id": 100, "section": "Liều lượng và cách dùng", "page_start": 304, "page_end": 306}
+{"question": "Bảo quản Candesartan cilexetil như thế nào?", "type": "generic", "drug": "Candesartan cilexetil", "drug_id": 100, "section": "Độ ổn định và bảo quản", "page_start": 304, "page_end": 306}
+{"question": "Candesartan cilexetil được dùng để điều trị bệnh gì?", "type": "generic", "drug": "Candesartan cilexetil", "drug_id": 100, "section": "Chỉ định", "page_start": 304, "page_end": 306}
+{"question": "dang cho con bu co dung lactobacillus acidophilus duoc khong?", "type": "no_accent", "drug": "Lactobacillus acidophilus", "drug_id": 373, "section": "Thời kỳ cho con bú", "page_start": 874, "page_end": 875}
+{"question": "nhung truong hop nao khong duoc dung lactobacillus acidophilus?", "type": "no_accent", "drug": "Lactobacillus acidophilus", "drug_id": 373, "section": "Chống chỉ định", "page_start": 874, "page_end": 875}
+{"question": "lieu dung lactobacillus acidophilus cho nguoi lon nhu the nao?", "type": "no_accent", "drug": "Lactobacillus acidophilus", "drug_id": 373, "section": "Liều lượng và cách dùng", "page_start": 874, "page_end": 875}
+{"question": "Vasodinitrat 10 được dùng để điều trị bệnh gì?", "type": "brand", "drug": "Isosorbid", "drug_id": 358, "section": "Chỉ định", "page_start": 845, "page_end": 846}
+{"question": "Phụ nữ mang thai có dùng được Vasodinitrat 10 không?", "type": "brand", "drug": "Isosorbid", "drug_id": 358, "section": "Thời kỳ mang thai", "page_start": 845, "page_end": 846}
+{"question": "Isobid có tác dụng phụ gì?", "type": "brand", "drug": "Isosorbid", "drug_id": 358, "section": "Tác dụng không mong muốn (ADR)", "page_start": 845, "page_end": 846}
+{"question": "Phụ nữ mang thai có dùng được Tím gentian không?", "type": "generic", "drug": "Tím gentian", "drug_id": 628, "section": "Thời kỳ mang thai", "page_start": 1381, "page_end": 1382}
+{"question": "Những trường hợp nào không được dùng Tím gentian?", "type": "generic", "drug": "Tím gentian", "drug_id": 628, "section": "Chống chỉ định", "page_start": 1381, "page_end": 1382}
+{"question": "Quá liều Tím gentian thì xử trí thế nào?", "type": "generic", "drug": "Tím gentian", "drug_id": 628, "section": "Quá liều và xử trí", "page_start": 1381, "page_end": 1382}
+{"question": "fluconazol tuong tac voi nhung thuoc nao?", "type": "no_accent", "drug": "Fluconazol", "drug_id": 272, "section": "Tương tác thuốc", "page_start": 666, "page_end": 669}
+{"question": "phu nu mang thai co dung duoc fluconazol khong?", "type": "no_accent", "drug": "Fluconazol", "drug_id": 272, "section": "Thời kỳ mang thai", "page_start": 666, "page_end": 669}
+{"question": "cach dung va lieu luong cua fluconazol?", "type": "no_accent", "drug": "Fluconazol", "drug_id": 272, "section": "Liều lượng và cách dùng", "page_start": 666, "page_end": 669}
+{"question": "Những trường hợp nào không được dùng Amitriptyline?", "type": "brand", "drug": "Amitriptylin", "drug_id": 44, "section": "Chống chỉ định", "page_start": 185, "page_end": 187}
+{"question": "Liều dùng Amilavil cho người lớn như thế nào?", "type": "brand", "drug": "Amitriptylin", "drug_id": 44, "section": "Liều lượng và cách dùng", "page_start": 185, "page_end": 187}
+{"question": "Phụ nữ mang thai có dùng được Amilavil không?", "type": "brand", "drug": "Amitriptylin", "drug_id": 44, "section": "Thời kỳ mang thai", "page_start": 185, "page_end": 187}
+{"question": "Chỉ định của Omeprazol", "type": "generic", "drug": "Omeprazol", "drug_id": 478, "section": "Chỉ định", "page_start": 1080, "page_end": 1082}
+{"question": "Tác dụng không mong muốn của Omeprazol", "type": "generic", "drug": "Omeprazol", "drug_id": 478, "section": "Tác dụng không mong muốn (ADR)", "page_start": 1080, "page_end": 1082}
+{"question": "Phụ nữ mang thai có dùng được Omeprazol không?", "type": "generic", "drug": "Omeprazol", "drug_id": 478, "section": "Thời kỳ mang thai", "page_start": 1080, "page_end": 1082}
+{"question": "lieu dung reserpin cho nguoi lon nhu the nao?", "type": "no_accent", "drug": "Reserpin", "drug_id": 557, "section": "Liều lượng và cách dùng", "page_start": 1237, "page_end": 1238}
+{"question": "bao quan reserpin nhu the nao?", "type": "no_accent", "drug": "Reserpin", "drug_id": 557, "section": "Độ ổn định và bảo quản", "page_start": 1237, "page_end": 1238}
+{"question": "phu nu mang thai co dung duoc reserpin khong?", "type": "no_accent", "drug": "Reserpin", "drug_id": 557, "section": "Thời kỳ mang thai", "page_start": 1237, "page_end": 1238}
+{"question": "Bảo quản Auroxetil 250 như thế nào?", "type": "brand", "drug": "Cefuroxim", "drug_id": 128, "section": "Độ ổn định và bảo quản", "page_start": 375, "page_end": 379}
+{"question": "Tác dụng không mong muốn của Ilaming", "type": "brand", "drug": "Cefuroxim", "drug_id": 128, "section": "Tác dụng không mong muốn (ADR)", "page_start": 375, "page_end": 379}
+{"question": "Hvcefu tương tác với những thuốc nào?", "type": "brand", "drug": "Cefuroxim", "drug_id": 128, "section": "Tương tác thuốc", "page_start": 375, "page_end": 379}
+{"question": "Nguyên tắc kê đơn thuốc là gì?", "type": "chapter", "drug": null, "drug_id": null, "section": "Kê đơn thuốc", "page_start": 39, "page_end": 40}
+{"question": "Khi dùng thuốc cho người cao tuổi cần lưu ý gì?", "type": "chapter", "drug": null, "drug_id": null, "section": "Sử dụng thuốc ở người cao tuổi", "page_start": 41, "page_end": 42}
+{"question": "Điều chỉnh liều thuốc ở người suy thận như thế nào?", "type": "chapter", "drug": null, "drug_id": null, "section": "Sử dụng thuốc ở người suy giảm chức năng gan, thận", "page_start": 43, "page_end": 44}
+{"question": "Nguyên tắc sử dụng thuốc cho trẻ em", "type": "chapter", "drug": null, "drug_id": null, "section": "Sử dụng thuốc ở trẻ em", "page_start": 45, "page_end": 46}
+{"question": "Sử dụng thuốc giảm đau an toàn theo bậc thang giảm đau", "type": "chapter", "drug": null, "drug_id": null, "section": "Sử dụng an toàn thuốc giảm đau", "page_start": 48, "page_end": 50}
+{"question": "Các nguyên tắc sử dụng kháng sinh hợp lý", "type": "chapter", "drug": null, "drug_id": null, "section": "Sử dụng hợp lý thuốc kháng sinh", "page_start": 70, "page_end": 71}
+{"question": "Xử trí ngộ độc thuốc và các thuốc giải độc", "type": "chapter", "drug": null, "drug_id": null, "section": "Ngộ độc và thuốc giải độc", "page_start": 90, "page_end": 92}
+{"question": "Dị ứng thuốc biểu hiện như thế nào và xử trí ra sao?", "type": "chapter", "drug": null, "drug_id": null, "section": "Dị ứng thuốc", "page_start": 85, "page_end": 89}
+{"question": "Cách tính diện tích bề mặt cơ thể để tính liều", "type": "chapter", "drug": null, "drug_id": null, "section": "Bảng tính diện tích bề mặt thân thể người", "page_start": 1499, "page_end": 1499}
+{"question": "Pha thuốc tiêm vào dịch truyền tĩnh mạch cần chú ý gì?", "type": "chapter", "drug": null, "drug_id": null, "section": "Pha thêm thuốc tiêm vào dịch truyền tĩnh mạch", "page_start": 1500, "page_end": 1510}
+{"question": "Thuốc chống động kinh nên dùng thế nào cho hợp lý?", "type": "chapter", "drug": null, "drug_id": null, "section": "Sử dụng hợp lý thuốc kháng động kinh", "page_start": 55, "page_end": 60}
+{"question": "Điều trị hen phế quản dùng những thuốc gì?", "type": "chapter", "drug": null, "drug_id": null, "section": "Sử dụng hợp lý các thuốc điều trị bệnh hen phế quản", "page_start": 51, "page_end": 54}

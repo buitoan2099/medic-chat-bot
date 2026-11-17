@@ -1,0 +1,27 @@
+# Cấu hình riêng (khoá API, địa chỉ máy) – dùng .env.example làm mẫu
+.env
+
+# Dữ liệu sinh ra, dựng lại được bằng: python -m rag.ingest --reset
+qdrant_db/
+
+# Tài liệu PDF: không đưa vào repo vì bản quyền – xem README để tải
+data/documents/
+
+# Dữ liệu chạy của hệ thống chat (lịch sử, cấu hình runtime)
+storage/
+
+# Kết quả đánh giá (sinh lại bằng python -m evaluation.run_eval)
+evaluation/results.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Log, hệ điều hành, IDE
+*.log
+.DS_Store
+.vscode/
+.idea/

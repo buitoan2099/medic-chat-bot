@@ -1,0 +1,20 @@
+{"question": "Uống paracetamol nhiều quá có sao không, xử trí ra sao?", "type": "natural", "drug_ids": [499], "sections": ["Quá liều và xử trí"], "page_start": 1118, "page_end": 1121}
+{"question": "Bị đau dạ dày thì có nên uống ibuprofen không?", "type": "natural", "drug_ids": [334], "sections": ["Chống chỉ định", "Thận trọng"], "page_start": 786, "page_end": 789}
+{"question": "Em bé 3 tuổi uống amoxicillin mỗi lần bao nhiêu?", "type": "natural", "drug_ids": [46, 47], "sections": ["Liều lượng và cách dùng"], "page_start": 188, "page_end": 196}
+{"question": "Metformin có gây hạ đường huyết không?", "type": "natural", "drug_ids": [415], "sections": ["Tác dụng không mong muốn (ADR)", "Thận trọng"], "page_start": 955, "page_end": 957}
+{"question": "Omeprazol nên uống trước hay sau ăn?", "type": "natural", "drug_ids": [478], "sections": ["Liều lượng và cách dùng"], "page_start": 1080, "page_end": 1082}
+{"question": "Amlodipin gây phù chân phải không?", "type": "natural", "drug_ids": [45], "sections": ["Tác dụng không mong muốn (ADR)"], "page_start": 187, "page_end": 188}
+{"question": "Diclofenac có dùng cho người bị hen được không?", "type": "natural", "drug_ids": [197], "sections": ["Chống chỉ định", "Thận trọng"], "page_start": 515, "page_end": 518}
+{"question": "Ciprofloxacin uống chung với sữa được không?", "type": "natural", "drug_ids": [138], "sections": ["Tương tác thuốc", "Liều lượng và cách dùng"], "page_start": 394, "page_end": 399}
+{"question": "Azithromycin điều trị những bệnh nhiễm khuẩn nào?", "type": "natural", "drug_ids": [63], "sections": ["Chỉ định"], "page_start": 227, "page_end": 231}
+{"question": "Đang dùng warfarin thì uống aspirin được không?", "type": "natural", "drug_ids": [679], "sections": ["Tương tác thuốc"], "page_start": 1483, "page_end": 1487}
+{"question": "Salbutamol xịt dùng thế nào khi lên cơn hen?", "type": "natural", "drug_ids": [569, 570], "sections": ["Liều lượng và cách dùng"], "page_start": 1262, "page_end": 1266}
+{"question": "Prednisolon dùng lâu dài có hại gì?", "type": "natural", "drug_ids": [527], "sections": ["Tác dụng không mong muốn (ADR)", "Thận trọng"], "page_start": 1173, "page_end": 1176}
+{"question": "Loratadin có gây buồn ngủ không?", "type": "natural", "drug_ids": [398], "sections": ["Tác dụng không mong muốn (ADR)"], "page_start": 923, "page_end": 925}
+{"question": "Uống captopril bị ho khan có phải do thuốc không?", "type": "natural", "drug_ids": [104], "sections": ["Tác dụng không mong muốn (ADR)"], "page_start": 314, "page_end": 316}
+{"question": "Furosemid làm mất kali phải không?", "type": "natural", "drug_ids": [290], "sections": ["Tác dụng không mong muốn (ADR)", "Thận trọng"], "page_start": 702, "page_end": 705}
+{"question": "Ngộ độc digoxin có biểu hiện gì?", "type": "natural", "drug_ids": [202], "sections": ["Quá liều và xử trí"], "page_start": 527, "page_end": 530}
+{"question": "Insulin chưa mở nắp cất ở nhiệt độ bao nhiêu?", "type": "natural", "drug_ids": [345], "sections": ["Độ ổn định và bảo quản"], "page_start": 810, "page_end": 816}
+{"question": "Bà bầu bị zona uống aciclovir có an toàn không?", "type": "natural", "drug_ids": [6], "sections": ["Thời kỳ mang thai"], "page_start": 114, "page_end": 117}
+{"question": "Đang nuôi con bằng sữa mẹ có uống được cetirizin không?", "type": "natural", "drug_ids": [130], "sections": ["Thời kỳ cho con bú"], "page_start": 381, "page_end": 382}
+{"question": "Người lớn uống paracetamol tối đa bao nhiêu một ngày?", "type": "natural", "drug_ids": [499], "sections": ["Liều lượng và cách dùng"], "page_start": 1118, "page_end": 1121}
