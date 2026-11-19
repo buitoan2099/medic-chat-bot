@@ -15,6 +15,9 @@ DEFAULT_SETTINGS = {
     # Khớp OLLAMA_NUM_PARALLEL (đo 18/11/2026: Mac mini xử lý tuần tự). Lớn hơn số Ollama
     # chạy song song thì yêu cầu dồn ở Ollama (FIFO) và hàng đợi ưu tiên mất tác dụng.
     'llm_max_parallel': 1,
+    # Số chỗ giữ riêng cho việc gấp (phân loại, trả lời khách, kiểm tra trước khi gửi): gợi ý /
+    # quản lý / hồ sơ ca không được chiếm. Chỉ có tác dụng khi llm_max_parallel >= 2.
+    'llm_reserved_slots': 1,
     'top_k': TOP_K,
     'candidate_k': CANDIDATE_K,
     'min_score': MIN_SCORE,
@@ -28,6 +31,16 @@ DEFAULT_SETTINGS = {
     'sla_emergency_s': 60,
     'reopen_window_h': 24,               # BR-06
     'guard_block_mode': 'confirm',       # confirm | hard (Q-10: thí điểm = confirm)
+    # Lỗi CHẶN CỨNG thêm (vd ['exceeds_level']) dù guard_block_mode=confirm. Mặc định rỗng:
+    # người trực trả lời thoải mái; chỉ gợi ý AI vượt quyền là không gửi được.
+    # prescription_drug luôn chặn cứng (không kê đơn trực tuyến), không bỏ được bằng cài đặt.
+    'guard_hard_issues': [],
+    # Bật/tắt bước AI kiểm tra trước khi gửi (AG-6). Tắt (mặc định): bấm Gửi là đi ngay, chỉ còn
+    # kiểm tra theo quy tắc (danh mục thuốc kê đơn, trích dẫn) + chặn gợi ý AI vượt quyền.
+    'guard_llm_enabled': False,
+    # Khi AG-6 bật: tin người trực tự soạn có qua AG-6 không (chỉ chặn thuốc kê đơn, còn lại cảnh báo).
+    # False = chỉ quy tắc, gửi ngay không chờ LLM – CHỈ tắt khi danh mục thuốc kê đơn (Q-2) đã đủ.
+    'guard_llm_for_typed': True,
     'guard_confirm_when_unavailable': True,
     # Quản lý (P3): mẫu quyền áp nhanh (đặc tả 02 mục 5)
     'permission_templates': {

@@ -79,20 +79,41 @@ def quick_adjust():
                 st.success(f'Đã áp dụng {len(changes)} thay đổi.')
     with tab_assign:
         board = mgr.board()
-        waiting = board['waiting_items']
-        if not waiting:
-            st.caption('Không có cuộc chat đang chờ.')
+        kind = st.radio('Cuộc chat', ['Đang xử lý (thay người trực)', 'Đang chờ'], horizontal=True,
+                        key='assign-kind')
+        handling = kind.startswith('Đang xử lý')
+        items = board.get('assigned_items', []) if handling else board['waiting_items']
+        if not items:
+            st.caption('Không có cuộc chat đang xử lý.' if handling else 'Không có cuộc chat đang chờ.')
         else:
-            conv = st.selectbox('Cuộc chat', waiting, format_func=lambda c: (
-                f'{URGENCY[c["urgency"]]} {c["required_level"]} · {c["id"][-6:]} · chờ {minutes(c["waited_s"])}'))
-            online = [s for s in staff if s['presence'] == 'online']
-            target = st.selectbox('Giao cho', online, format_func=lambda s: f'{s["name"]} ({s["level"]})')
-            override = st.checkbox('Giao dù người nhận chưa đủ cấp (phải ghi lý do)')
+            if handling:
+                label = lambda c: (f'{URGENCY[c["urgency"]]} {c["id"][-6:]} · cần {c["required_level"]} · '  # noqa: E731
+                                   f'{c["assignee_name"]} ({c["assignee_level"]}) · {minutes(c["since_s"])}')
+            else:
+                label = lambda c: (f'{URGENCY[c["urgency"]]} {c["required_level"]} · {c["id"][-6:]} · '  # noqa: E731
+                                   f'chờ {minutes(c["waited_s"])}')
+            conv = st.selectbox('Chọn cuộc chat', items, format_func=label, key='assign-conv')
+            raise_to = st.selectbox('Nâng cấp cần thiết của cuộc chat', ['Giữ nguyên', 'C2', 'C3'],
+                                    help='Ví dụ người trực C1 không đủ thẩm quyền → nâng lên C2, '
+                                         'cuộc chat từ nay chỉ người C2 trở lên nhận.', key='assign-level')
+            need = conv['required_level'] if raise_to == 'Giữ nguyên' else raise_to
+            order = ['none', 'C1', 'C2', 'C3']
+            online = [s for s in staff if s['presence'] == 'online' and 'operator' in s.get('roles', [])
+                      and s['id'] != conv.get('assignee_id')]
+            online.sort(key=lambda s: order.index(s['level']) < order.index(need))
+            target = st.selectbox('Giao cho', online, key='assign-target', format_func=lambda s: (
+                f'{s["name"]} ({s["level"]})' + ('' if order.index(s['level']) >= order.index(need)
+                                                 else ' – chưa đủ cấp')))
+            if not online:
+                st.caption('Không có người trực nào khác đang online.')
+            override = st.checkbox('Giao dù người nhận chưa đủ cấp (phải ghi lý do)', key='assign-override')
             reason2 = reason_input('assign')
             if st.button('Chỉ định', key='apply-assign', disabled=not (target and reason2)):
                 try:
-                    mgr.assign(conv['id'], target['id'], reason2, override)
-                    st.success('Đã chỉ định.')
+                    mgr.assign(conv['id'], target['id'], reason2, override,
+                               None if raise_to == 'Giữ nguyên' else raise_to)
+                    st.success(f'Đã giao cho {target["name"]}. Khách được báo, '
+                               'người trực cũ không còn gửi tin trong cuộc chat này.')
                 except api.BackendError as error:
                     st.error(str(error))
     with tab_agent:
@@ -150,14 +171,29 @@ with chat_col:
         if col.button(label, width='stretch'):
             mgr.quick(state.mgr_session, action)
             st.rerun()
-    with q5.popover('Hiệu suất…', width='stretch'):
-        staff = mgr.staff()
+    with q5.popover('Người trực…', width='stretch'):
+        staff = [s for s in mgr.staff() if 'operator' in s.get('roles', ['operator'])]
         member = st.selectbox('Người trực', staff, format_func=lambda s: s['name'], key='perf-staff')
         start = st.date_input('Từ ngày', key='perf-from')
         end = st.date_input('Đến ngày', key='perf-to')
-        if st.button('Xem F-2'):
-            mgr.quick(state.mgr_session, 'operator', {'staff': member['id'], 'from_day': start.isoformat(),
-                                                      'to_day': end.isoformat()})
+        period = {'staff': member['id'], 'from_day': start.isoformat(), 'to_day': end.isoformat()} \
+            if member else None
+        if st.button('📝 Nội dung đã xử lý (F-6)', width='stretch', disabled=not member):
+            mgr.quick(state.mgr_session, 'workday', period)
+            st.rerun()
+        if st.button('📊 Số liệu hiệu suất (F-2)', width='stretch', disabled=not member):
+            mgr.quick(state.mgr_session, 'operator', period)
+            st.rerun()
+        if st.button('🤖 Nhờ AI tóm tắt & nhận xét', width='stretch', disabled=not member,
+                     help='AG-7 đọc các cuộc chat và viết nhận xét (mất 1–2 phút)'):
+            when = start.strftime('%d/%m/%Y') if start == end else \
+                f'từ {start.strftime("%d/%m/%Y")} đến {end.strftime("%d/%m/%Y")}'
+            with st.spinner('AG-7 đang đọc các cuộc chat…'):
+                try:
+                    mgr.ask(state.mgr_session, f'Tóm tắt nội dung {member["name"]} đã xử lý {when} '
+                                               f'(ngày {start.isoformat()} đến {end.isoformat()}) và nhận xét.')
+                except api.BackendError as error:
+                    st.error(str(error))
             st.rerun()
     if q6.button('⚡ Điều chỉnh', width='stretch'):
         quick_adjust()
@@ -171,7 +207,7 @@ with chat_col:
                 render_card(card, f'{message["id"]}-{i}')
             if message['content']:
                 st.markdown(message['content'])
-    question = st.chat_input('Yêu cầu: tóm tắt cuộc chat, hiệu suất người trực, phân quyền, hỏi tài liệu…')
+    question = st.chat_input('Yêu cầu: hôm nay Lan xử lý những gì, tóm tắt cuộc chat, hiệu suất, phân quyền, hỏi tài liệu…')
     if question:
         with st.spinner('AG-7 đang xử lý...'):
             try:

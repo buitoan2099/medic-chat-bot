@@ -110,3 +110,21 @@ def test_chat_tools_returns_calls_and_cleans_content():
     assert first['tool_calls'] == [{'name': 'list_staff', 'arguments': {'a': 1}}]
     final = gw.chat_tools(cfg(), [{'role': 'tool', 'content': '{}'}], 4, tools)
     assert final['content'] == 'Đã xong' and final['tool_calls'] == []
+
+
+def test_reserved_slot_keeps_room_for_urgent_work():
+    """2 chỗ, giữ 1: gợi ý (ưu tiên 3) chỉ chiếm 1 chỗ; kiểm tra trước khi gửi (2) vào ngay."""
+    limiter = PriorityLimiter(max_parallel=2, reserved=1)
+    limiter.acquire(3)                                   # gợi ý dài đang chạy
+    with pytest.raises(LLMTimeout):
+        limiter.acquire(3, timeout=0.05)                 # gợi ý thứ hai phải chờ
+    assert limiter.acquire(2, timeout=0.05) < 0.05       # việc gấp không phải chờ
+    limiter.release(2)
+    limiter.release(3)
+    assert limiter.acquire(3, timeout=0.05) < 0.05
+
+
+def test_single_slot_still_runs_background_work():
+    limiter = PriorityLimiter(max_parallel=1, reserved=1)
+    assert limiter.acquire(5, timeout=0.05) < 0.05      # 1 chỗ: việc nền không bị chặn vĩnh viễn
+    limiter.release(5)

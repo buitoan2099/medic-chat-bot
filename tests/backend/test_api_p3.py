@@ -39,6 +39,8 @@ class Script:
                         value='C2', reason='đủ điều kiện')
         if question.startswith('Tra'):
             return call('search_documents', query='chống chỉ định diclofenac')
+        if question.startswith('Hôm nay'):
+            return call('get_operator_workday', staff=question.split()[2])
         if question.startswith('Ai tên'):
             return call('get_operator_metrics', staff='Nguyễn')
         return {'content': 'Không rõ yêu cầu.'}
@@ -215,3 +217,27 @@ def test_staff_resolved_with_title_and_reminder_after_form(env):
     ask(client, people, session, 'Hiệu suất lan')
     final_round = script.seen[-1]
     assert final_round[-1]['role'] == 'user' and 'KHÔNG lặp lại bảng' in final_round[-1]['content']
+
+
+def test_operator_workday_form_lists_handled_conversations(env):               # F-6
+    client, people, conv, session, script, adapter = env
+    adapter.fail = LLMError('Ollama offline')                     # nút nhanh không cần LLM
+    reply = client.post(f'/api/manager/sessions/{session}/quick', headers=people['quanly']['h'],
+                        json={'action': 'workday', 'args': {'staff': people['lan']['id']}}).json()
+    card = reply['cards'][0]
+    assert card['form'] == 'F-6'
+    assert '**1 cuộc chat**' in card['markdown'] and f'#{conv[-6:]}' in card['markdown']
+    assert 'Bạn nên nghỉ ngơi và theo dõi.' in card['markdown']        # người trực đã trả lời gì
+    assert 'Tôi bị sốt nên uống gì?' in card['markdown']               # khách hỏi gì
+    empty = client.post(f'/api/manager/sessions/{session}/quick', headers=people['quanly']['h'],
+                        json={'action': 'workday', 'args': {'staff': people['hoa']['id']}}).json()
+    assert '**0 cuộc chat**' in empty['cards'][0]['markdown']
+
+
+def test_agent_answers_workday_question_with_f6(env):
+    client, people, conv, session, script, _ = env
+    reply = ask(client, people, session, 'Hôm nay lan xử lý những gì?')
+    assert reply['cards'][0]['form'] == 'F-6' and 'Nhận định' in reply['content']
+    tool_msg = next(m for m in reversed(script.seen[-1]) if m['role'] == 'tool')
+    data = json.loads(tool_msg['content'])
+    assert data['conversations'][0]['code'] == conv[-6:] and conv[-6:] in data['transcripts']

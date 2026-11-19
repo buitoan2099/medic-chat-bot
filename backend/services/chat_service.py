@@ -218,6 +218,7 @@ class ChatService:
 
         run.provider, run.model = stats.provider or run.provider, stats.model or run.model
         run.duration_s, run.prompt_tokens = stats.duration_s, stats.prompt_tokens
+        run.queue_wait_s = stats.queue_wait_s
         run.output_tokens = stats.output_tokens
         if run.status == 'ok':
             self.storage.ai_runs.add(run)

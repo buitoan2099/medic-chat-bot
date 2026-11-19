@@ -368,7 +368,7 @@ Trả về đúng lược đồ.
 - tin chứa mẫu trích dẫn (`.pdf`, "tr.", "trang \d+", nhãn `[`…`]`) thì `citation_leak`;
 - tin chứa tên thuốc có trong danh sách thuốc kê đơn (danh mục do đơn vị cung cấp, xem Q-2), ở **mọi cấp**, thì đánh dấu `prescription_drug` *nghi vấn* và chuyển cho AG-6 xác định có phải khuyên dùng cho trường hợp cụ thể hay chỉ là thông tin chung.
 
-Hành vi theo `verdict` ở mức cấu hình: `block` có thể chặn cứng hoặc chỉ yêu cầu xác nhận kèm lý do. Mặc định là **yêu cầu xác nhận** trong giai đoạn thử nghiệm. Riêng `prescription_drug` luôn **chặn cứng** (không kê đơn trực tuyến).
+Hành vi theo `verdict` ở mức cấu hình: `block` có thể chặn cứng hoặc chỉ yêu cầu xác nhận kèm lý do. Mặc định là **yêu cầu xác nhận** trong giai đoạn thử nghiệm. Riêng `prescription_drug` luôn **chặn cứng** (không kê đơn trực tuyến). **Tin người trực tự soạn** (không từ gợi ý): chỉ chặn `prescription_drug`; các vấn đề khác (kể cả vượt quyền) chỉ hiện cảnh báo, không bắt xác nhận. Cài đặt `guard_llm_for_typed = false` bỏ hẳn AG-6 cho tin tự soạn (chỉ còn quy tắc), chỉ nên dùng khi danh mục thuốc kê đơn (Q-2) đã đủ. **Gợi ý có `scope_check = exceeds` không được gửi** dưới mọi hình thức (nguyên văn hay sửa); người trực tự soạn trả lời hoặc đẩy cấp. `guard_hard_issues` cho phép chặn cứng thêm loại lỗi nếu Hội đồng yêu cầu.
 
 ---
 

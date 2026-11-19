@@ -24,6 +24,7 @@ from backend.services.permissions import PermissionError_, level_value
 from backend.storage.base import ConflictError
 
 CLAIMED_TEXT = '{name} đã tiếp nhận cuộc trò chuyện.'
+TAKEN_OVER_TEXT = '{name} sẽ tiếp tục hỗ trợ bạn trong cuộc trò chuyện này.'
 ESCALATED_TEXT = 'Câu hỏi của bạn đang được chuyển tới chuyên viên phù hợp hơn. Vui lòng chờ trong giây lát.'
 CLOSED_TEXT = 'Cuộc trò chuyện đã kết thúc. Bạn có thể nhắn tiếp trong 24 giờ để được hỗ trợ thêm.'
 RETURNED_TEXT = 'Người trực vừa rời ca, cuộc trò chuyện đang được chuyển cho người trực khác.'
@@ -93,11 +94,23 @@ class OperatorService:
     def schedule(self, fn, *args):
         self.background.submit(fn, *args)
 
-    def schedule_copilot(self, conversation_id, staff_id, instruction=None):
+    def schedule_copilot(self, conversation_id, staff_id, instruction=None, then=None):
+        """Xếp lịch tạo gợi ý; `then` (vd cập nhật hồ sơ ca) chạy SAU khi gợi ý xong, cùng luồng –
+        để việc nền không chiếm Ollama trước gợi ý (cả bước embedding tìm tài liệu)."""
         staff, eff = self._staff_view(staff_id)
         if eff['capabilities']['ai.use_copilot'] and eff['level'] in ('C1', 'C2', 'C3'):
-            self.schedule(self.copilot.generate, conversation_id, staff_id, eff['level'],
-                          instruction)
+            self.copilot.mark_pending(conversation_id)
+
+            def job():
+                try:
+                    self.copilot.generate(conversation_id, staff_id, eff['level'], instruction)
+                finally:
+                    if then:
+                        then()
+
+            self.schedule(job)
+        elif then:
+            self.schedule(then)
 
     # ---------- danh sách ----------
 
@@ -142,6 +155,7 @@ class OperatorService:
             'messages': self.storage.messages.list(conversation.id, conversation.days),
             'events': self.storage.events.for_conversation(conversation.id, conversation.days),
             'suggestion': self.copilot.latest(conversation) if is_owner else None,
+            'suggestion_pending_since': self.copilot.pending_since(conversation.id) if is_owner else None,
             'read_only': not is_owner,
         }
 
@@ -177,14 +191,25 @@ class OperatorService:
         self.schedule_copilot(conversation_id, staff_id)
         return conversation
 
-    def assign(self, manager_id, conversation_id, staff_id, reason, override_level=False):
-        """BR-03: quản lý chỉ định; người không đủ cấp phải override + lý do."""
+    def assign(self, manager_id, conversation_id, staff_id, reason, override_level=False,
+               required_level=None):
+        """
+        BR-03: quản lý chỉ định cuộc chat đang chờ HOẶC đang xử lý (thay người trực giữa chừng,
+        vd người trước không đủ thẩm quyền). Người không đủ cấp phải override + lý do.
+        required_level: nâng cấp cần thiết của cuộc chat (chỉ nâng, không hạ).
+        """
 
         self.permissions.require_role(manager_id, 'manager')
         if not reason or not reason.strip():
             raise OperatorError('Cần ghi lý do chỉ định')
         current = self.storage.conversations.get(conversation_id)
-        ok, why = self._can_take(staff_id, current.required_level.value)
+        if current.assignee_id == staff_id and current.status == ConversationStatus.assigned:
+            raise OperatorError('Người này đang phụ trách cuộc chat rồi')
+        order = ['none', 'C1', 'C2', 'C3']
+        old_level = current.required_level.value
+        new_level = required_level if required_level and order.index(required_level) > order.index(old_level) \
+            else old_level
+        ok, why = self._can_take(staff_id, new_level)
         if not ok and not (override_level and why.startswith('cấp')):
             raise OperatorError(f'Không thể chỉ định: {why}')
         now = iso(utc_now())
@@ -193,7 +218,7 @@ class OperatorService:
             if conversation.status not in (ConversationStatus.waiting, ConversationStatus.assigned):
                 raise Rejected('Chỉ chỉ định được cuộc chat đang chờ hoặc đang xử lý')
             return {'status': ConversationStatus.assigned, 'assignee_id': staff_id,
-                    'assigned_at': now, 'pending_transfer': None}
+                    'assigned_at': now, 'pending_transfer': None, 'required_level': new_level}
 
         try:
             conversation = mutate(self.storage, conversation_id, change)
@@ -201,7 +226,12 @@ class OperatorService:
             raise OperatorError(str(error))
         self._event(conversation_id, 'assigned', manager_id,
                     {'to': staff_id, 'from': current.assignee_id, 'reason': reason,
-                     'override_level': bool(override_level and not ok)}, actor_type='manager')
+                     'override_level': bool(override_level and not ok),
+                     **({'from_level': old_level, 'to_level': new_level} if new_level != old_level else {})},
+                    actor_type='manager')
+        text = TAKEN_OVER_TEXT if current.status == ConversationStatus.assigned else CLAIMED_TEXT
+        self._message(conversation_id, SenderType.system,
+                      text.format(name=self.display_name(self.storage.staff.get(staff_id))), kind='notice')
         self.schedule_copilot(conversation_id, staff_id)
         return conversation
 
@@ -310,6 +340,7 @@ class OperatorService:
         if not eff['capabilities']['ai.use_copilot']:
             raise OperatorError('Không có quyền dùng gợi ý AI')
         if background:
+            self.copilot.mark_pending(conversation_id)
             self.schedule(self.copilot.generate, conversation_id, staff_id, eff['level'], instruction)
             return None
         return self.copilot.generate(conversation_id, staff_id, eff['level'], instruction)
@@ -323,7 +354,7 @@ class OperatorService:
             self.storage.suggestions.update(suggestion)
         return suggestion
 
-    def check(self, staff_id, conversation_id, text):
+    def check(self, staff_id, conversation_id, text, suggestion_id=None):
         conversation = self.storage.conversations.get(conversation_id)
         if conversation.assignee_id != staff_id:
             raise OperatorError('Chỉ người phụ trách mới gửi tin')
@@ -333,7 +364,12 @@ class OperatorService:
                          if m.sender_type == SenderType.end_user), '')
         if conversation.urgency == Urgency.emergency:
             question = '[KHÁCH CÓ DẤU HIỆU CẤP CỨU] ' + question
-        return self.guard.check(conversation, staff_id, eff['level'], text.strip(), question)
+        typed = not suggestion_id
+        settings = self.config.settings()
+        use_llm = settings.get('guard_llm_enabled', False) and (
+            not typed or settings.get('guard_llm_for_typed', True))
+        return self.guard.check(conversation, staff_id, eff['level'], text.strip(), question,
+                                use_llm=use_llm, typed=typed)
 
     def send(self, staff_id, conversation_id, text, suggestion_id=None, guard_check_id=None,
              confirm_reason=None):
@@ -355,11 +391,15 @@ class OperatorService:
             unchanged = text == suggestion.reply_draft.strip()
             if unchanged and not eff['capabilities']['ai.send_unedited']:
                 raise OperatorError('Bạn cần chỉnh sửa gợi ý trước khi gửi (AC-2.9)')
+            if (suggestion.scope_check or {}).get('status') == 'exceeds':
+                level = (suggestion.scope_check or {}).get('suggested_level') or 'cấp cao hơn'
+                raise OperatorError(f'Gợi ý vượt phạm vi cấp {eff["level"]}: không được gửi gợi ý này. '
+                                    f'Hãy tự soạn câu trả lời, hoặc đẩy cấp lên {level}.')
             send_mode = 'ai_unedited' if unchanged else 'ai_edited'
 
         check = self.storage.guard_checks.get(guard_check_id) if guard_check_id else None
         if check is None or check.text != text or check.conversation_id != conversation_id:
-            check = self.check(staff_id, conversation_id, text)
+            check = self.check(staff_id, conversation_id, text, suggestion.id if suggestion else None)
         if check.hard_block:
             raise OperatorError('Tin bị chặn: ' + '; '.join(self.guard.describe(check)))
         if self.guard.needs_confirmation(check):
@@ -402,9 +442,12 @@ class OperatorService:
         message = self._message(conversation.id, SenderType.end_user, text,
                                 sender_id=conversation.end_user_id)
         fresh = self.storage.conversations.get(conversation.id)
-        self.schedule(self.case_memory.update, fresh.id)
+        # Gợi ý trước: người trực đang chờ nó; hồ sơ ca (AG-5) là việc nền, chạy sau.
+        update_profile = lambda: self.case_memory.update(fresh.id)  # noqa: E731
         if fresh.status == ConversationStatus.assigned and fresh.assignee_id:
-            self.schedule_copilot(fresh.id, fresh.assignee_id)
+            self.schedule_copilot(fresh.id, fresh.assignee_id, then=update_profile)
+        else:
+            self.schedule(update_profile)
         return fresh.id, message
 
     def _reopen(self, conversation):

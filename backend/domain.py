@@ -146,6 +146,7 @@ class AiRun(Record):
     model: str
     conversation_id: Optional[str] = None
     duration_s: Optional[float] = None
+    queue_wait_s: Optional[float] = None     # thời gian xếp hàng chờ LLM (trước khi chạy)
     prompt_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     estimated_prompt_tokens: Optional[int] = None

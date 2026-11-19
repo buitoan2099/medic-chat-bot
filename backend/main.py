@@ -90,6 +90,7 @@ def build_state(storage_dir=STORAGE_DIR, adapters=None, qdrant=True, background=
         if OPENAI_API_KEY:
             adapters['openai'] = OpenAICompatibleAdapter(OPENAI_API_KEY, OPENAI_BASE_URL)
     gateway = LLMGateway(adapters, max_parallel=config.settings()['llm_max_parallel'])
+    gateway.limiter.set_reserved(config.settings().get('llm_reserved_slots', 1))
 
     client = None
     if qdrant:

@@ -45,6 +45,7 @@ class LLMResult:
     prompt_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     used_fallback: bool = False
+    queue_wait_s: float = 0.0
 
 
 @dataclass
@@ -57,6 +58,7 @@ class StreamStats:
     prompt_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     used_fallback: bool = False
+    queue_wait_s: float = 0.0
     extra: dict = field(default_factory=dict)
 
 
@@ -65,11 +67,20 @@ class StreamStats:
 # ============================================================
 
 class PriorityLimiter:
-    """Tối đa `max_parallel` yêu cầu chạy cùng lúc; ai chờ được phục vụ theo ưu tiên rồi FIFO."""
+    """
+    Tối đa `max_parallel` yêu cầu chạy cùng lúc; ai chờ được phục vụ theo ưu tiên rồi FIFO.
 
-    def __init__(self, max_parallel=2):
+    Giữ chỗ cho việc gấp: việc nền (ưu tiên >= PRIORITY_COPILOT: gợi ý, quản lý, hồ sơ ca)
+    chỉ được dùng tối đa `max_parallel - reserved` chỗ, để kiểm tra trước khi gửi / trả lời
+    khách / phân loại không phải xếp sau một gợi ý dài 60 s. Chỉ có tác dụng khi
+    max_parallel >= 2 (Ollama đặt OLLAMA_NUM_PARALLEL >= 2); với 1 chỗ thì việc nền vẫn chạy.
+    """
+
+    def __init__(self, max_parallel=2, reserved=1):
         self.max_parallel = max_parallel
+        self.reserved = reserved
         self._running = 0
+        self._running_low = 0
         self._waiting = []
         self._counter = itertools.count()
         self._cond = threading.Condition()
@@ -79,29 +90,68 @@ class PriorityLimiter:
             self.max_parallel = max(1, int(value))
             self._cond.notify_all()
 
+    def set_reserved(self, value):
+        with self._cond:
+            self.reserved = max(0, int(value))
+            self._cond.notify_all()
+
+    @staticmethod
+    def _is_low(priority):
+        return priority >= PRIORITY_COPILOT
+
+    def _low_cap(self):
+        return max(1, self.max_parallel - self.reserved)
+
+    def _can_run(self, ticket):
+        if self._running >= self.max_parallel:
+            return False
+        if self._is_low(ticket[0]) and self._running_low >= self._low_cap():
+            return False
+        # Theo thứ tự ưu tiên: chỉ vượt lên khi mọi vé đứng trước đều đang bị chặn bởi giới hạn việc nền
+        for other in sorted(self._waiting):
+            if other == ticket:
+                return True
+            if not (self._is_low(other[0]) and self._running_low >= self._low_cap()):
+                return False
+        return False
+
     def acquire(self, priority, timeout=None):
+        """Trả về số giây đã chờ trong hàng đợi."""
         ticket = (priority, next(self._counter))
-        deadline = None if timeout is None else time.monotonic() + timeout
+        started = time.monotonic()
+        deadline = None if timeout is None else started + timeout
         with self._cond:
             heapq.heappush(self._waiting, ticket)
             try:
-                while not (self._running < self.max_parallel and self._waiting[0] == ticket):
+                while not self._can_run(ticket):
                     remaining = None if deadline is None else deadline - time.monotonic()
                     if remaining is not None and remaining <= 0:
                         raise LLMTimeout('Hết thời gian chờ trong hàng đợi LLM')
                     self._cond.wait(remaining)
-                heapq.heappop(self._waiting)
+                self._waiting.remove(ticket)
+                heapq.heapify(self._waiting)
                 self._running += 1
+                if self._is_low(priority):
+                    self._running_low += 1
             except BaseException:
                 if ticket in self._waiting:
                     self._waiting.remove(ticket)
                     heapq.heapify(self._waiting)
                 self._cond.notify_all()
                 raise
+        return time.monotonic() - started
 
-    def release(self):
+    def release(self, priority=None):
+        """Trả chỗ. Truyền đúng `priority` đã acquire (stream có thể chạy qua nhiều luồng).
+        Không truyền: coi như trả một chỗ việc nền nếu chỉ còn việc nền đang chạy."""
         with self._cond:
+            if priority is None:
+                low = self._running_low > 0 and self._running_low == self._running
+            else:
+                low = self._is_low(priority)
             self._running -= 1
+            if low:
+                self._running_low -= 1
             self._cond.notify_all()
 
     @property
@@ -349,8 +399,9 @@ class LLMGateway:
         if not agent_cfg.enabled:
             raise LLMError(f'Agent {agent_cfg.agent_id} đang tắt')
         last_error = None
+        waited = 0.0
         for provider, model, is_fallback in self._targets(agent_cfg):
-            self.limiter.acquire(priority, timeout=self.queue_timeout_s)
+            waited += self.limiter.acquire(priority, timeout=self.queue_timeout_s)
             started = time.perf_counter()
             try:
                 text, usage = self._adapter(provider).chat(messages, self._cfg(agent_cfg, model), schema)
@@ -359,11 +410,11 @@ class LLMGateway:
                                  duration_s=time.perf_counter() - started,
                                  prompt_tokens=usage.get('prompt_tokens'),
                                  output_tokens=usage.get('output_tokens'),
-                                 used_fallback=is_fallback)
+                                 used_fallback=is_fallback, queue_wait_s=waited)
             except LLMError as error:
                 last_error = error
             finally:
-                self.limiter.release()
+                self.limiter.release(priority)
         raise last_error
 
     def chat_tools(self, agent_cfg, messages, priority, tools):
@@ -380,17 +431,18 @@ class LLMGateway:
             if not hasattr(adapter, 'chat_tools'):
                 last_error = LLMError(f'Provider {provider} không hỗ trợ gọi công cụ')
                 continue
-            self.limiter.acquire(priority, timeout=self.queue_timeout_s)
+            waited = self.limiter.acquire(priority, timeout=self.queue_timeout_s)
             started = time.perf_counter()
             try:
                 result = adapter.chat_tools(messages, self._cfg(agent_cfg, model), tools)
                 content = clean_response(result.get('content') or '')
                 return {**result, 'content': content, 'provider': provider, 'model': model,
-                        'used_fallback': is_fallback, 'duration_s': time.perf_counter() - started}
+                        'used_fallback': is_fallback, 'duration_s': time.perf_counter() - started,
+                        'queue_wait_s': waited}
             except LLMError as error:
                 last_error = error
             finally:
-                self.limiter.release()
+                self.limiter.release(priority)
         raise last_error
 
     def stream(self, agent_cfg, messages, priority, stats: StreamStats) -> Iterator[str]:
@@ -403,7 +455,7 @@ class LLMGateway:
             raise LLMError(f'Agent {agent_cfg.agent_id} đang tắt')
         last_error = None
         for provider, model, is_fallback in self._targets(agent_cfg):
-            self.limiter.acquire(priority, timeout=self.queue_timeout_s)
+            stats.queue_wait_s += self.limiter.acquire(priority, timeout=self.queue_timeout_s)
             started = time.perf_counter()
             produced = False
             think = ThinkFilter()
@@ -427,7 +479,7 @@ class LLMGateway:
                     raise
                 last_error = error
             finally:
-                self.limiter.release()
+                self.limiter.release(priority)
         raise last_error
 
     def ping(self, provider, model):

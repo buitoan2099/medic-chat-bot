@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from backend.api.common import current_staff, get_core
+from backend.core import iso
 
 router = APIRouter(prefix='/api/operator', tags=['khung 2'])
 manager_router = APIRouter(prefix='/api/manager', tags=['quản lý'])
@@ -36,6 +37,7 @@ class PresenceRequest(BaseModel):
 
 class TextRequest(BaseModel):
     text: str
+    suggestion_id: Optional[str] = None
 
 
 class SendRequest(BaseModel):
@@ -72,6 +74,7 @@ class AssignRequest(BaseModel):
     staff_id: str
     reason: str
     override_level: bool = False
+    required_level: Optional[str] = None
 
 
 # ---------- đăng nhập & trạng thái ----------
@@ -154,6 +157,8 @@ def view(conversation_id: str, staff=Depends(current_staff), core=Depends(get_co
             'messages': [m.model_dump(mode='json') for m in data['messages']],
             'events': [e.model_dump(mode='json') for e in data['events']],
             'suggestion': data['suggestion'].model_dump(mode='json') if data['suggestion'] else None,
+            'suggestion_pending_since': iso(data['suggestion_pending_since'])
+            if data['suggestion_pending_since'] else None,
             'read_only': data['read_only']}
 
 
@@ -165,7 +170,7 @@ def claim(conversation_id: str, staff=Depends(current_staff), core=Depends(get_c
 @router.post('/conversations/{conversation_id}/check')
 def check(conversation_id: str, body: TextRequest, staff=Depends(current_staff),
           core=Depends(get_core)):
-    result = core.operator.check(staff.id, conversation_id, body.text)
+    result = core.operator.check(staff.id, conversation_id, body.text, body.suggestion_id)
     return {**result.model_dump(mode='json'), 'issue_texts': core.operator.guard.describe(result),
             'needs_confirmation': core.operator.guard.needs_confirmation(result)}
 
@@ -226,4 +231,4 @@ def profile(conversation_id: str, body: ProfileRequest, staff=Depends(current_st
 @manager_router.post('/assign')
 def assign(body: AssignRequest, staff=Depends(current_staff), core=Depends(get_core)):
     return conv_dump(core.operator.assign(staff.id, body.conversation_id, body.staff_id,
-                                          body.reason, body.override_level))
+                                          body.reason, body.override_level, body.required_level))

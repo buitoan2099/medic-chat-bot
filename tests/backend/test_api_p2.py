@@ -115,6 +115,10 @@ def view(client, who, conv_id):
     return client.get(f'/api/operator/conversations/{conv_id}', headers=who['h'])
 
 
+def enable_guard(client):
+    client.put('/api/admin/settings', headers=ADMIN, json={'changes': {'guard_llm_enabled': True}})
+
+
 def send(client, who, conv_id, text, **extra):
     return client.post(f'/api/operator/conversations/{conv_id}/send', headers=who['h'],
                        json={'text': text, **extra})
@@ -212,19 +216,63 @@ def test_send_unedited_requires_capability(env):                         # AC-2.
     assert response.status_code == 400 and 'chỉnh sửa' in response.json()['detail']
 
 
-def test_block_requires_confirmation_reason(env):                         # AC-2.6
+def test_typed_message_sends_freely_with_only_a_warning(env):              # trả lời thoải mái
+    """Tin tự soạn: vượt quyền / liều cụ thể / chưa nhắc cấp cứu chỉ là cảnh báo, không chặn."""
     client, staff, brain = env
+    enable_guard(client)
     conv_id = customer(client)
     claim(client, staff['lan'], conv_id)
-    brain.guard_issues = ['specific_dose_without_level']
-    assert send(client, staff['lan'], conv_id, 'Uống 2 viên 500 mg').status_code == 400
-    brain.guard_issues = ['specific_dose_without_level']
-    ok = send(client, staff['lan'], conv_id, 'Uống 2 viên 500 mg', confirm_reason='đã hỏi bác sĩ')
-    assert ok.status_code == 200 and ok.json()['check']['confirmed_reason'] == 'đã hỏi bác sĩ'
+    for issue in ('exceeds_level', 'specific_dose_without_level', 'emergency_not_addressed'):
+        brain.guard_issues = [issue]
+        sent = send(client, staff['lan'], conv_id, f'Tin tự soạn ({issue})')
+        assert sent.status_code == 200, sent.json()
+        assert sent.json()['check']['verdict'] == 'warn' and not sent.json()['check']['hard_block']
+
+
+def test_suggestion_based_send_keeps_confirmation(env):                     # AC-2.6
+    """Tin từ gợi ý AI vẫn qua AG-6 đầy đủ: block -> cần lý do."""
+    client, staff, brain = env
+    enable_guard(client)
+    conv_id = customer(client)
+    claim(client, staff['lan'], conv_id)
+    suggestion = view(client, staff['lan'], conv_id).json()['suggestion']
+    brain.guard_issues = ['emergency_not_addressed']
+    assert send(client, staff['lan'], conv_id, DRAFT, suggestion_id=suggestion['id']).status_code == 400
+    brain.guard_issues = ['emergency_not_addressed']
+    ok = send(client, staff['lan'], conv_id, DRAFT, suggestion_id=suggestion['id'],
+              confirm_reason='đã gọi 115 cho khách')
+    assert ok.status_code == 200 and ok.json()['check']['confirmed_reason'] == 'đã gọi 115 cho khách'
+
+
+def test_typed_rule_only_mode_skips_llm(env):
+    client, staff, brain = env
+    enable_guard(client)
+    conv_id = customer(client)
+    claim(client, staff['lan'], conv_id)
+    client.put('/api/admin/settings', headers=ADMIN, json={'changes': {'guard_llm_for_typed': False}})
+    before = sum(1 for c in brain.calls if c[0] == 'GuardOutput')
+    assert send(client, staff['lan'], conv_id, 'Bạn nghỉ ngơi nhé').status_code == 200
+    assert sum(1 for c in brain.calls if c[0] == 'GuardOutput') == before      # không gọi AG-6
+
+
+def test_exceeding_suggestion_cannot_be_sent(env):                          # AC-2.5
+    client, staff, _ = env
+    conv_id = customer(client)
+    client.post('/api/manager/assign', headers=staff['quanly']['h'], json={
+        'conversation_id': conv_id, 'staff_id': staff['an']['id'], 'reason': 'thử',
+        'override_level': True})
+    suggestion = view(client, staff['an'], conv_id).json()['suggestion']
+    assert suggestion['scope_check']['status'] == 'exceeds'
+    for text in (suggestion['reply_draft'], suggestion['reply_draft'] + ' (đã sửa)'):
+        refused = send(client, staff['an'], conv_id, text, suggestion_id=suggestion['id'])
+        assert refused.status_code == 400 and 'vượt phạm vi' in refused.json()['detail']
+    own = send(client, staff['an'], conv_id, 'Bạn nên đi khám để được tư vấn thuốc phù hợp.')
+    assert own.status_code == 200 and own.json()['message']['send_mode'] == 'typed'
 
 
 def test_prescription_drug_hard_blocked_even_for_doctor(env):             # AC-2.6a
     client, staff, brain = env
+    enable_guard(client)
     conv_id = customer(client)
     claim(client, staff['minh'], conv_id)
     brain.guard_issues = ['prescription_drug']
@@ -333,3 +381,71 @@ def test_manager_assign_requires_override_for_low_level(env):            # BR-03
     ok = client.post('/api/manager/assign', headers=staff['quanly']['h'],
                      json={**body, 'override_level': True})
     assert ok.status_code == 200 and ok.json()['assignee_id'] == staff['an']['id']
+
+
+def test_view_reports_suggestion_in_progress(env):                         # UI-2.4: đang tạo gợi ý
+    client, staff, _ = env
+    conv_id = customer(client)
+    copilot = client.app.state.core.operator.copilot
+    seen = []
+    original = copilot._generate
+
+    def spy(*args, **kwargs):                  # nhìn từ người trực trong lúc gợi ý đang tạo
+        seen.append(view(client, staff['lan'], conv_id).json()['suggestion_pending_since'])
+        return original(*args, **kwargs)
+
+    copilot._generate = spy
+    claim(client, staff['lan'], conv_id)
+    assert seen and seen[0] is not None
+    done = view(client, staff['lan'], conv_id).json()
+    assert done['suggestion_pending_since'] is None and done['suggestion']['status'] == 'ready'
+
+
+def test_manager_replaces_operator_mid_conversation(env):                  # BR-03: thay người trực
+    client, staff, _ = env
+    conv_id = customer(client)
+    claim(client, staff['lan'], conv_id)
+    assert send(client, staff['lan'], conv_id, 'Chào bạn').status_code == 200
+    assign = lambda who, **extra: client.post('/api/manager/assign', headers=staff['quanly']['h'], json={  # noqa: E731
+        'conversation_id': conv_id, 'staff_id': staff[who]['id'], 'reason': 'vượt thẩm quyền C2', **extra})
+
+    assert assign('an', required_level='C3').status_code == 400          # C1 không đủ cấp C3
+    moved = assign('minh', required_level='C3')
+    assert moved.status_code == 200
+    assert moved.json()['assignee_id'] == staff['minh']['id'] and moved.json()['required_level'] == 'C3'
+    assert assign('minh').status_code == 400                             # đang phụ trách rồi
+
+    customer_view = client.get(f'/api/chat/conversations/{conv_id}').json()
+    assert 'sẽ tiếp tục hỗ trợ bạn' in customer_view['messages'][-1]['content']
+    assert send(client, staff['lan'], conv_id, 'Tin của người cũ').status_code == 400
+    assert send(client, staff['minh'], conv_id, 'Tôi là bác sĩ Minh').status_code == 200
+    board = client.get('/api/manager/board', headers=staff['quanly']['h']).json()
+    item = next(i for i in board['assigned_items'] if i['id'] == conv_id)
+    assert item['assignee_id'] == staff['minh']['id'] and item['required_level'] == 'C3'
+
+
+def test_copilot_not_regenerated_for_same_customer_message(env):
+    client, staff, brain = env
+    conv_id = customer(client)
+    claim(client, staff['lan'], conv_id)
+    count = lambda: sum(1 for c in brain.calls if c[0] == 'CopilotOutput')  # noqa: E731
+    before = count()
+    copilot = client.app.state.core.operator.copilot
+    copilot.mark_pending(conv_id)
+    copilot.generate(conv_id, staff['lan']['id'], 'C2')          # cùng tin khách -> dùng lại
+    assert count() == before
+    client.post(f'/api/operator/conversations/{conv_id}/suggestions', headers=staff['lan']['h'],
+                json={'instruction': 'ngắn hơn'})                  # có chỉ dẫn -> vẫn tạo lại
+    assert count() == before + 1
+
+
+def test_no_pre_send_ai_check_by_default(env):                               # gửi ngay, không chờ AG-6
+    client, staff, brain = env
+    conv_id = customer(client)
+    claim(client, staff['lan'], conv_id)
+    suggestion = view(client, staff['lan'], conv_id).json()['suggestion']
+    before = sum(1 for c in brain.calls if c[0] == 'GuardOutput')
+    brain.guard_issues = ['exceeds_level']                       # có bật thì đã bị cảnh báo
+    assert send(client, staff['lan'], conv_id, 'Tin tự soạn').status_code == 200
+    assert send(client, staff['lan'], conv_id, DRAFT, suggestion_id=suggestion['id']).status_code == 200
+    assert sum(1 for c in brain.calls if c[0] == 'GuardOutput') == before

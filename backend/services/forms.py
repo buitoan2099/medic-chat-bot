@@ -125,3 +125,39 @@ def compare(rows, from_day, to_day, narrative=None):
         lines.append(f'| **Trung bình nhóm** | | {avg([m["conversations"]["total"] for _, _, m in rows]):.1f} | '
                      f'{dur(avg(frt))} | | | | | |')
     return '\n'.join(lines) + _narrative(narrative)
+
+
+def operator_workday(name, level, from_day, to_day, rows, narrative=None):
+    """F-6: nội dung người trực đã xử lý trong khoảng ngày (mỗi cuộc chat một mục)."""
+    period = from_day if from_day == to_day else f'{from_day} → {to_day}'
+    closed = sum(1 for r in rows if r['status'] == 'closed')
+    moved = sum(1 for r in rows if r['moves'])
+    sent = sum(r['staff_messages'] for r in rows)
+    lines = [f'### NỘI DUNG ĐÃ XỬ LÝ – {name} ({level}) · {period}',
+             f'**{len(rows)} cuộc chat** · đã đóng {closed} · đang xử lý {len(rows) - closed} · '
+             f'chuyển/đẩy cấp {moved} · {sent} tin đã gửi khách']
+    if not rows:
+        lines.append(f'\n{NO_DATA} – người trực chưa xử lý cuộc chat nào trong khoảng này.')
+    for i, r in enumerate(rows, 1):
+        lines.append(f'\n**{i}. #{r["code"]}** · {r["time"]} · {r["user"]} · cần {r["required_level"]}'
+                     + (' · 🚨 cấp cứu' if r['urgency'] == 'emergency' else '')
+                     + f' · **{STATUS_TEXT.get(r["status"], r["status"])}**')
+        lines.append(f'- **Khách hỏi:** {r["issue"] or NO_DATA}')
+        if r['summary']:
+            lines.append(f'- **Tóm tắt (AG-5):** {r["summary"]}')
+        if r['replies']:
+            lines.append(f'- **Đã trả lời ({r["staff_messages"]} tin):** '
+                         + ' / '.join(f'“{x}”' for x in r['replies']))
+        else:
+            lines.append('- **Đã trả lời:** chưa gửi tin nào')
+        if r['ai_usage']:
+            lines.append(f'- **Dùng gợi ý AI:** {r["ai_usage"]}')
+        if r['moves']:
+            lines.append(f'- **Chuyển/đẩy cấp:** {r["moves"]}')
+        if r['alerts']:
+            lines.append(f'- **Lưu ý:** {r["alerts"]}')
+    return '\n'.join(lines) + _narrative(narrative)
+
+
+STATUS_TEXT = {'closed': 'đã đóng', 'assigned': 'đang xử lý', 'waiting': 'đang chờ',
+               'ai_active': 'chế độ AI'}

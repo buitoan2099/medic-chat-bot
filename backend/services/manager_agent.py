@@ -55,6 +55,9 @@ TOOLS = [
            'from_day': DAY, 'to_day': DAY, 'sla_breached': {'type': 'boolean'}}),
     _tool('get_conversation', 'Chi tiết + form F-1 tóm tắt một cuộc chat (mã đầy đủ hoặc 6 ký tự cuối).',
           {'conversation': {'type': 'string'}}, ['conversation']),
+    _tool('get_operator_workday', 'Form F-6 NỘI DUNG người trực đã xử lý (từng cuộc chat: khách hỏi gì, '
+          'đã trả lời gì, kết quả). Dùng khi hỏi "hôm nay X xử lý những gì / tư vấn gì".',
+          {'staff': {'type': 'string'}, 'from_day': DAY, 'to_day': DAY}, ['staff']),
     _tool('get_operator_metrics', 'Form F-2 hiệu suất một người trực trong khoảng ngày.',
           {'staff': {'type': 'string'}, 'from_day': DAY, 'to_day': DAY}, ['staff']),
     _tool('compare_operators', 'Form F-5 so sánh người trực (bỏ trống staff = tất cả).',
@@ -258,6 +261,99 @@ class ManagerAgentService:
         card = {'type': 'form', 'form': 'F-1', 'markdown': forms.conversation_summary(facts),
                 'conversation_id': conversation.id}
         return {'facts': facts, 'transcript': transcript}, card
+
+    def _name_of(self, staff_id):
+        try:
+            return self._staff_name(self.storage.staff.get(staff_id))
+        except (KeyError, TypeError):
+            return 'người khác'
+
+    def workday_facts(self, staff, start, end, reply_limit=3):
+        """Các cuộc chat người trực đã xử lý trong [start, end]: tiếp nhận / được giao / có gửi tin."""
+
+        days = set(days_between(start, end))
+        local = lambda t: parse_iso(t).astimezone(LOCAL_TZ)  # noqa: E731
+        in_period = lambda t: local(t).strftime('%Y-%m-%d') in days  # noqa: E731
+        rows, transcripts = [], {}
+        for conversation in self.storage.conversations.find():
+            if not days & set(conversation.days):
+                continue
+            messages = self.storage.messages.list(conversation.id, conversation.days)
+            events = self.storage.events.for_conversation(conversation.id, conversation.days)
+            mine = [m for m in messages if m.sender_type == 'staff' and m.sender_id == staff.id
+                    and in_period(m.created_at)]
+            took = [e for e in events if in_period(e.created_at) and (
+                (e.type == 'claimed' and e.actor_id == staff.id)
+                or (e.type in ('assigned', 'transferred') and (e.data or {}).get('to') == staff.id))]
+            if not mine and not took and conversation.assignee_id != staff.id:
+                continue
+            if not mine and not took and not in_period(conversation.created_at):
+                continue
+            start_at = min([e.created_at for e in took] + [m.created_at for m in mine])  \
+                if (took or mine) else conversation.created_at
+            last_at = max(m.created_at for m in mine) if mine else None
+            customer = [m.content for m in messages if m.sender_type == 'end_user']
+            issue = conversation.profile.chief_complaint or (customer[0][:160] if customer else '')
+            modes = [m.send_mode or 'typed' for m in mine]
+            ai_usage = ', '.join(f'{label} {modes.count(k)}' for k, label in
+                                 (('ai_unedited', 'gửi nguyên văn'), ('ai_edited', 'sửa rồi gửi'))
+                                 if modes.count(k))
+            moves = []
+            for e in events:
+                data, at = e.data or {}, local(e.created_at).strftime('%H:%M')
+                if e.type == 'transferred' and data.get('from') == staff.id:
+                    moves.append(f'chuyển cho {self._name_of(data.get("to"))} {at}')
+                elif e.type == 'transferred' and data.get('to') == staff.id:
+                    moves.append(f'nhận chuyển từ {self._name_of(data.get("from"))} {at}')
+                elif e.type == 'escalated' and e.actor_id == staff.id:
+                    moves.append(f'đẩy cấp lên {data.get("to_level", "?")} {at}'
+                                 + (f' ({data["reason"]})' if data.get('reason') else ''))
+                elif e.type == 'returned_to_queue' and e.actor_id == staff.id:
+                    moves.append(f'trả về hàng chờ {at}')
+            checks = [c for day in conversation.days for c in self.storage.guard_checks.by_day(day)
+                      if c.conversation_id == conversation.id and c.staff_id == staff.id]
+            alerts = []
+            warned = [c for c in checks if c.verdict in ('warn', 'block') and not c.hard_block]
+            if warned:
+                alerts.append(f'{len(warned)} cảnh báo khi gửi')
+            if any(c.hard_block for c in checks):
+                alerts.append('có tin bị chặn')
+            if conversation.sla_breached_at:
+                alerts.append('khách chờ quá SLA')
+            first, last = local(start_at).strftime('%H:%M'), local(last_at).strftime('%H:%M') if last_at else None
+            time = first + (f'–{last}' if last and last != first else '')
+            if len(days) > 1:
+                time = local(start_at).strftime('%d/%m ') + time
+            rows.append({'id': conversation.id, 'code': conversation.id[-6:], 'time': time,
+                         'sort': start_at, 'user': self._user_label(conversation),
+                         'required_level': conversation.required_level.value,
+                         'urgency': conversation.urgency.value, 'status': conversation.status.value,
+                         'issue': issue, 'summary': conversation.summary,
+                         'staff_messages': len(mine),
+                         'replies': [m.content[:160].replace('\n', ' ') for m in mine[-reply_limit:]],
+                         'ai_usage': ai_usage, 'moves': '; '.join(moves), 'alerts': '; '.join(alerts)})
+            label = {'end_user': 'Khách', 'ai': 'AI', 'system': 'Hệ thống'}
+            transcripts[conversation.id[-6:]] = [
+                f'[{m.sender_name or label.get(m.sender_type, "Người trực")}] {m.content[:200]}'
+                for m in messages[-10:] if m.sender_type != 'system']
+        rows.sort(key=lambda r: r['sort'])
+        return rows, transcripts
+
+    def _tool_get_operator_workday(self, args, ctx):
+        staff = self.resolve_staff(args['staff'])
+        start, end = _period(args)
+        rows, transcripts = self.workday_facts(staff, start, end)
+        level = self.permissions.effective(staff.id)['level']
+        card = {'type': 'form', 'form': 'F-6', 'staff_id': staff.id,
+                'markdown': forms.operator_workday(self._staff_name(staff), level, start, end, rows)}
+        # Giới hạn ngữ cảnh cho LLM: 12 cuộc gần nhất, mỗi cuộc 10 tin
+        recent = rows[-12:]
+        return {'staff': self._staff_name(staff), 'level': level, 'from_day': start, 'to_day': end,
+                'conversations': [{k: v for k, v in r.items() if k != 'sort'} for r in recent],
+                'transcripts': {r['code']: transcripts[r['code']] for r in recent},
+                'instruction': ('Thẻ F-6 đã hiển thị danh sách. KHÔNG liệt kê lại từng cuộc. Chỉ viết '
+                                'nhận định ngắn: các nhóm vấn đề khách hỏi nhiều, cách trả lời có phù hợp '
+                                'phạm vi cấp không, ca cần quản lý xem lại (nêu mã), đề xuất.')}, card
 
     def _tool_get_operator_metrics(self, args, ctx):
         staff = self.resolve_staff(args['staff'])
@@ -497,6 +593,7 @@ class ManagerAgentService:
                 lambda a: {'status': 'waiting', 'sla_breached': True}),
         'waiting': ('Cuộc chat đang chờ', 'find_conversations', lambda a: {'status': 'waiting'}),
         'operator': ('Hiệu suất người trực', 'get_operator_metrics', lambda a: a),
+        'workday': ('Nội dung người trực đã xử lý', 'get_operator_workday', lambda a: a),
         'conversation': ('Tóm tắt cuộc chat', 'get_conversation', lambda a: a),
     }
 

@@ -98,6 +98,8 @@ python -m evaluation.run_eval --api           # khi backend đang chạy
 
 ## Tài liệu dự án
 
+- [docs/huong-dan-su-dung.md](docs/huong-dan-su-dung.md) – hướng dẫn cho người trực, quản lý, quản trị
+- [docs/tai-lieu-ky-thuat.md](docs/tai-lieu-ky-thuat.md) – hệ thống đã triển khai: kiến trúc, chạy, cấu hình, API, dữ liệu, khác biệt so với đặc tả
 - [BAO_CAO_CAI_TIEN.md](BAO_CAO_CAI_TIEN.md) – các cải tiến RAG và kết quả đánh giá
 - [docs/chat-3-khung/](docs/chat-3-khung/README.md) – đặc tả và technical plan hệ thống chat 3 khung
 - [docs/phan-tang.md](docs/phan-tang.md) – phân tầng ca bệnh, danh mục chuyên môn (chờ Hội đồng duyệt)

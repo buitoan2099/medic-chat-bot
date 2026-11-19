@@ -99,6 +99,7 @@ class TriageService:
                                          schema=TriageResult.model_json_schema())
             run.provider, run.model = response.provider, response.model
             run.duration_s, run.prompt_tokens = response.duration_s, response.prompt_tokens
+            run.queue_wait_s = response.queue_wait_s
             run.output_tokens = response.output_tokens
             llm_result = TriageResult.model_validate_json(response.text)
         except (LLMError, ValidationError, ValueError) as exc:

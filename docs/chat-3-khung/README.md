@@ -15,6 +15,7 @@ Phạm vi: mở rộng chatbot tra cứu tài liệu hiện có (RAG trên Dư�
 | [06-nghiem-thu-va-lo-trinh.md](06-nghiem-thu-va-lo-trinh.md) | Tiêu chí nghiệm thu, lộ trình theo giai đoạn, câu hỏi mở |
 | [07-xung-dot-kien-truc.md](07-xung-dot-kien-truc.md) | Xung đột giữa đặc tả và code hiện tại, các quyết định đã chốt |
 | [08-technical-plan.md](08-technical-plan.md) | Kế hoạch kỹ thuật triển khai |
+| [09-ket-noi-zalo.md](09-ket-noi-zalo.md) | Kế hoạch kết nối Zalo qua zca-js: gắn tài khoản cho người trực, tin Zalo thành cuộc chat (chưa triển khai) |
 | [../phan-tang.md](../phan-tang.md) | Phân tầng ca bệnh, danh mục chuyên môn (chờ Hội đồng duyệt) |
 
 ## Tóm tắt

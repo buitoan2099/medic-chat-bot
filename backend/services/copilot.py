@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from backend.agents import context_builder as ctx
 from backend.agents.registry import AG5_CASE_MEMORY, COPILOT_BY_LEVEL
 from backend.agents.schemas import CaseMemoryOutput, CopilotOutput
+from backend.core import utc_now
 from backend.domain import AiRun, AiSuggestion, CaseProfile, SenderType
 from backend.llm.gateway import PRIORITY_BACKGROUND, PRIORITY_COPILOT, LLMError
 from backend.services.guard import citation_leak
@@ -32,10 +33,30 @@ class CopilotService:
         self.index = index_manager
         self._locks = {}
         self._guard = threading.Lock()
+        self._pending = {}           # conversation_id -> [số việc đang chờ/chạy, thời điểm bắt đầu]
 
     def _lock(self, conversation_id):
         with self._guard:
             return self._locks.setdefault(conversation_id, threading.Lock())
+
+    def mark_pending(self, conversation_id):
+        """Gọi khi xếp lịch tạo gợi ý: giao diện hiện 'đang tạo' kèm thời gian chờ."""
+        with self._guard:
+            entry = self._pending.setdefault(conversation_id, [0, utc_now()])
+            entry[0] += 1
+
+    def _done(self, conversation_id):
+        with self._guard:
+            entry = self._pending.get(conversation_id)
+            if entry:
+                entry[0] -= 1
+                if entry[0] <= 0:
+                    del self._pending[conversation_id]
+
+    def pending_since(self, conversation_id):
+        with self._guard:
+            entry = self._pending.get(conversation_id)
+            return entry[1] if entry else None
 
     def latest(self, conversation):
         found = self.storage.suggestions.for_conversation(conversation.id, conversation.days)
@@ -58,6 +79,22 @@ class CopilotService:
     def generate(self, conversation_id, staff_id, level, instruction=None):
         """Sinh gợi ý cho tin khách mới nhất. Gợi ý cũ chưa dùng -> 'superseded'."""
 
+        try:
+            with self._guard:              # còn lượt mới hơn đang xếp hàng -> lượt này thừa, bỏ
+                queued = self._pending.get(conversation_id, [0])[0]
+            if queued > 1 and not instruction:
+                return None
+            return self._generate(conversation_id, staff_id, level, instruction)
+        finally:
+            self._done(conversation_id)
+
+    def _already_done(self, conversation, question_id, staff_id):
+        """Đã có gợi ý (chưa dùng) cho đúng tin khách này, cùng người trực -> không tạo lại."""
+        latest = self.latest(conversation)
+        return (latest is not None and latest.for_message_id == question_id
+                and latest.staff_id == staff_id and latest.status == 'ready' and latest.outcome is None)
+
+    def _generate(self, conversation_id, staff_id, level, instruction=None):
         with self._lock(conversation_id):
             conversation = self.storage.conversations.get(conversation_id)
             messages = self.storage.messages.list(conversation.id, conversation.days)
@@ -65,6 +102,8 @@ class CopilotService:
             if not customer:
                 return None
             question = customer[-1]
+            if not instruction and self._already_done(conversation, question.id, staff_id):
+                return self.latest(conversation)
             agent_id = COPILOT_BY_LEVEL[level]
             cfg = self.config.agent(agent_id)
             prompt, version = self.config.prompt(agent_id)
@@ -98,6 +137,7 @@ class CopilotService:
                                              schema=CopilotOutput.model_json_schema())
                 output = CopilotOutput.model_validate_json(response.text)
                 run.duration_s, run.prompt_tokens = response.duration_s, response.prompt_tokens
+                run.queue_wait_s = response.queue_wait_s
                 run.output_tokens, suggestion.model = response.output_tokens, response.model
                 suggestion = suggestion.model_copy(update={
                     **output.model_dump(exclude={'scope_check', 'confidence_reason'}),
@@ -157,7 +197,7 @@ class CaseMemoryService:
                                              PRIORITY_BACKGROUND,
                                              schema=CaseMemoryOutput.model_json_schema())
                 output = CaseMemoryOutput.model_validate_json(response.text)
-                run.duration_s = response.duration_s
+                run.duration_s, run.queue_wait_s = response.duration_s, response.queue_wait_s
             except (LLMError, ValidationError, ValueError) as error:
                 run.status, run.error = 'error', str(error)[:500]
                 self.storage.ai_runs.add(run)

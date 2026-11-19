@@ -20,7 +20,7 @@
 | AC-2.3 | Có tin mới của khách thì gợi ý được sinh từ agent **đúng cấp** của người trực (AG-2/3/4), có đủ các trường lược đồ. |
 | AC-2.4 | Gợi ý dùng thông tin khách đã cung cấp ở tin trước (vd dị ứng penicilin) và không hỏi lại. |
 | AC-2.5 | Người C1 nhận gợi ý cho câu hỏi kê thuốc: `scope_check = exceeds`, có đề xuất đẩy cấp. |
-| AC-2.6 | Người C1 gửi tin có liều cụ thể cho ca cụ thể: kiểm tra trước khi gửi báo `block` và yêu cầu xác nhận/chặn theo cấu hình. |
+| AC-2.6 | Gợi ý AI vượt phạm vi cấp của người trực: không gửi được (nguyên văn hay sửa). Tin người trực tự soạn: chỉ chặn thuốc kê đơn, vấn đề khác hiện cảnh báo. Tin từ gợi ý bị AG-6 báo `block`: cần xác nhận kèm lý do. |
 | AC-2.6a | Người trực ở **bất kỳ cấp nào, kể cả C3**, gửi tin khuyên dùng thuốc kê đơn cho trường hợp của khách thì bị **chặn cứng**. Giải thích thông tin chung về thuốc kê đơn thì không bị chặn. |
 | AC-2.6c | Ca có khách > 75 tuổi hoặc nhiều bệnh nền được phân loại tối thiểu C3 (T3-Chuyển), kể cả khi triệu chứng thuộc danh mục T2. |
 | AC-2.6d | Gợi ý C2 chỉ chứa thuốc có trong danh sách không kê đơn của đúng tình trạng, kèm thời gian dùng tối đa; tin của người trực gợi ý thuốc ngoài danh sách bị AG-6 cảnh báo `otc_not_in_list`. |

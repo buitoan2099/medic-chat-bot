@@ -165,9 +165,9 @@ class Operator:
     def claim(self, conversation_id):
         return self._req('POST', f'/api/operator/conversations/{conversation_id}/claim')
 
-    def check(self, conversation_id, text):
+    def check(self, conversation_id, text, suggestion_id=None):
         return self._req('POST', f'/api/operator/conversations/{conversation_id}/check',
-                         {'text': text}, timeout=120.0)
+                         {'text': text, 'suggestion_id': suggestion_id}, timeout=120.0)
 
     def send(self, conversation_id, text, suggestion_id=None, guard_check_id=None,
              confirm_reason=None):
@@ -259,10 +259,11 @@ class Manager(Operator):
     def toggle_agent(self, agent_id, reason, **changes):
         return self._req('PUT', f'/api/manager/agents/{agent_id}', {**changes, 'reason': reason})
 
-    def assign(self, conversation_id, staff_id, reason, override_level=False):
+    def assign(self, conversation_id, staff_id, reason, override_level=False, required_level=None):
         return self._req('POST', '/api/manager/assign', {'conversation_id': conversation_id,
                                                          'staff_id': staff_id, 'reason': reason,
-                                                         'override_level': override_level})
+                                                         'override_level': override_level,
+                                                         'required_level': required_level})
 
 
 def demo_accounts():

@@ -101,6 +101,8 @@ def update_settings(body: SettingsUpdate, core=Depends(get_core), actor=Depends(
     updated = core.config.update_settings(body.changes, actor)
     if 'llm_max_parallel' in body.changes:
         core.gateway.limiter.set_max_parallel(updated['llm_max_parallel'])
+    if 'llm_reserved_slots' in body.changes:
+        core.gateway.limiter.set_reserved(updated['llm_reserved_slots'])
     return updated
 
 

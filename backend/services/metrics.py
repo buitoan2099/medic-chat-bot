@@ -264,6 +264,18 @@ class MetricsService:
             'top_topics': topics.most_common(8),
         }
 
+    def _assigned_item(self, conversation, now, permissions):
+        try:
+            staff = self.storage.staff.get(conversation.assignee_id)
+            name = f'{staff.title} {staff.display_name}'.strip()
+            level = permissions.effective(staff.id)['level']
+        except (KeyError, TypeError):
+            name, level = '?', 'none'
+        return {'id': conversation.id, 'required_level': conversation.required_level.value,
+                'urgency': conversation.urgency.value, 'assignee_id': conversation.assignee_id,
+                'assignee_name': name, 'assignee_level': level,
+                'since_s': (now - parse_iso(conversation.assigned_at or conversation.created_at)).total_seconds()}
+
     def board(self):
         """Bảng trạng thái khung 3 (UI-3.3)."""
 
@@ -285,6 +297,7 @@ class MetricsService:
                                'urgency': c.urgency.value, 'sla_breached': bool(c.sla_breached_at),
                                'waited_s': (now - parse_iso(c.queued_at or c.created_at)).total_seconds()}
                               for c in waiting],
+            'assigned_items': [self._assigned_item(c, now, permissions) for c in assigned],
             'today': {'conversations': overview['conversations']['total'],
                       'first_response_median_s': overview['first_response']['median_s'],
                       'queue_median_s': overview['queue']['median_s'],

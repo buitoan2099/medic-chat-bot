@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import APP_NOTICE, APP_SUBTITLE, APP_TITLE  # noqa: E402
 from ui import api_client as api  # noqa: E402
+from ui.scroll import scroll_to_bottom, waiting_indicator  # noqa: E402
 
 st.set_page_config(page_title=APP_TITLE, page_icon='💬', layout='centered')
 
@@ -136,6 +137,31 @@ def render(message):
                     st.caption(f'{source.get("title") or source.get("source_file")} — {pages}')
 
 
+def loading_html(label, seconds):
+    return (f'<div style="display:flex;align-items:center;gap:.6rem;opacity:.8">'
+            f'<div class="wait-dot"></div><span>{label}… <b>{seconds:.0f}s</b></span></div>'
+            '<style>.wait-dot{width:.8rem;height:.8rem;border-radius:50%;'
+            'border:2px solid currentColor;border-top-color:transparent;'
+            'animation:wait-spin .8s linear infinite}'
+            '@keyframes wait-spin{to{transform:rotate(360deg)}}</style>')
+
+
+def staff_waiting_state(conversation, messages):
+    """(nhãn, mốc thời gian) nếu khách đang đợi người trực; None nếu không."""
+    status = conversation['status']
+    if status == 'waiting':
+        return ('🧑‍⚕️ Đang chờ người trực tiếp nhận',
+                conversation.get('queued_at') or messages[-1]['created_at'])
+    if status != 'assigned':
+        return None
+    chat = [m for m in messages if m['sender_type'] in ('end_user', 'staff')]
+    if not chat or chat[-1]['sender_type'] != 'end_user':
+        return None
+    staff_names = [m.get('sender_name') for m in chat if m['sender_type'] == 'staff' and m.get('sender_name')]
+    who = staff_names[-1] if staff_names else 'Người trực'
+    return f'{who} đang xem tin của bạn, vui lòng đợi phản hồi', chat[-1]['created_at']
+
+
 if conversation['mode'] == 'human':
     # Tự làm mới để thấy tin người trực (đặc tả 05 mục 3: ≤ 5 giây)
     @st.fragment(run_every=3)
@@ -144,10 +170,14 @@ if conversation['mode'] == 'human':
         for message in fresh['messages']:
             render(message)
         status = fresh['conversation']['status']
-        if status == 'waiting':
-            st.info('🧑‍⚕️ Đang chờ người trực tiếp nhận. Bạn vẫn có thể nhắn thêm thông tin.')
-        elif status == 'closed':
+        waiting = staff_waiting_state(fresh['conversation'], fresh['messages'])
+        if waiting:
+            waiting_indicator(*waiting, key=fresh['conversation']['id'][-8:])
+            if status == 'waiting':
+                st.caption('Bạn vẫn có thể nhắn thêm thông tin trong lúc chờ.')
+        if status == 'closed':
             st.caption('Cuộc trò chuyện đã kết thúc. Nhắn tiếp trong 24 giờ để được hỗ trợ thêm.')
+        scroll_to_bottom(f'human-{state.conversation_id}', len(fresh['messages']))
 
     live()
     text = st.chat_input('Nhắn cho người trực...')
@@ -169,6 +199,7 @@ st.button('🧑‍⚕️ Chuyển sang người trực', on_click=go_human)     
 question = st.chat_input('Nhập câu hỏi về thuốc...')
 if state.get('last_timing'):
     st.caption(state.pop('last_timing'))
+scroll_to_bottom(f'ai-{state.conversation_id}', len(view['messages']))
 
 STAGES = {'sending': 'Đang gửi câu hỏi', 'classifying': 'Đang phân loại câu hỏi',
           'searching': 'Đang tìm trong tài liệu', 'generating': 'Đang soạn câu trả lời'}
@@ -184,15 +215,6 @@ def stream_events(conversation_id, text, inbox):
     except Exception as error:                     # mất kết nối, timeout...
         inbox.put({'type': 'error', 'detail': f'Mất kết nối tới backend: {error}'})
     inbox.put(None)
-
-
-def loading_html(label, seconds):
-    return (f'<div style="display:flex;align-items:center;gap:.6rem;opacity:.8">'
-            f'<div class="wait-dot"></div><span>{label}… <b>{seconds:.0f}s</b></span></div>'
-            '<style>.wait-dot{width:.8rem;height:.8rem;border-radius:50%;'
-            'border:2px solid currentColor;border-top-color:transparent;'
-            'animation:wait-spin .8s linear infinite}'
-            '@keyframes wait-spin{to{transform:rotate(360deg)}}</style>')
 
 
 if question:
