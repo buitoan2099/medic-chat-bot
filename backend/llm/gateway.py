@@ -160,6 +160,21 @@ class OllamaAdapter:
         return (data.get('message') or {}).get('content', ''), {
             'prompt_tokens': data.get('prompt_eval_count'), 'output_tokens': data.get('eval_count')}
 
+    def chat_tools(self, messages, cfg, tools):
+        payload = self._payload(messages, cfg, None, False)
+        payload['tools'] = tools
+        data = self._post(payload, cfg, False).json()
+        message = data.get('message') or {}
+        calls = []
+        for call in message.get('tool_calls') or []:
+            function = call.get('function') or {}
+            arguments = function.get('arguments') or {}
+            if isinstance(arguments, str):
+                arguments = json.loads(arguments or '{}')
+            calls.append({'name': function.get('name'), 'arguments': arguments})
+        return {'content': message.get('content', ''), 'tool_calls': calls,
+                'prompt_tokens': data.get('prompt_eval_count'), 'output_tokens': data.get('eval_count')}
+
     def stream(self, messages, cfg, stats):
         response = self._post(self._payload(messages, cfg, None, True), cfg, True)
         with response:
@@ -196,8 +211,10 @@ class FakeAdapter:
 
     name = 'fake'
 
-    def __init__(self, responder: Optional[Callable] = None, fail: Optional[Exception] = None):
+    def __init__(self, responder: Optional[Callable] = None, fail: Optional[Exception] = None,
+                 tool_responder: Optional[Callable] = None):
         self.responder = responder or self._default
+        self.tool_responder = tool_responder
         self.fail = fail
         self.calls = []
 
@@ -212,6 +229,15 @@ class FakeAdapter:
         if self.fail:
             raise self.fail
         return self.responder(messages, cfg, schema), {'prompt_tokens': None, 'output_tokens': None}
+
+    def chat_tools(self, messages, cfg, tools):
+        """tool_responder(messages, tools) -> {'content': str, 'tool_calls': [{'name', 'arguments'}]}"""
+        self.calls.append({'messages': messages, 'cfg': cfg, 'tools': tools})
+        if self.fail:
+            raise self.fail
+        if self.tool_responder is None:
+            return {'content': self.responder(messages, cfg, None), 'tool_calls': []}
+        return {'tool_calls': [], 'content': '', **self.tool_responder(messages, tools)}
 
     def stream(self, messages, cfg, stats):
         text, _ = self.chat(messages, cfg)
@@ -245,6 +271,31 @@ class OpenAICompatibleAdapter:
         return response.choices[0].message.content or '', {
             'prompt_tokens': getattr(usage, 'prompt_tokens', None),
             'output_tokens': getattr(usage, 'completion_tokens', None)}
+
+    def chat_tools(self, messages, cfg, tools):
+        converted = []
+        for m in messages:              # chuyển định dạng tin 'tool' kiểu Ollama sang OpenAI
+            if m['role'] == 'tool':
+                converted.append({'role': 'tool', 'tool_call_id': m.get('tool_call_id', m.get('tool_name')),
+                                  'content': m['content']})
+            elif m.get('tool_calls'):
+                converted.append({'role': 'assistant', 'content': m.get('content') or '',
+                                  'tool_calls': [{'id': c.get('id', c['function']['name']), 'type': 'function',
+                                                  'function': {'name': c['function']['name'],
+                                                               'arguments': json.dumps(c['function']['arguments'])}}
+                                                 for c in m['tool_calls']]})
+            else:
+                converted.append(m)
+        try:
+            response = self.client.chat.completions.create(
+                model=cfg['model'], messages=converted, temperature=cfg['temperature'],
+                max_tokens=cfg['max_tokens'], tools=tools, timeout=cfg['timeout_s'])
+        except Exception as error:
+            raise LLMError(f'Lỗi OpenAI: {error}') from error
+        message = response.choices[0].message
+        calls = [{'name': c.function.name, 'arguments': json.loads(c.function.arguments or '{}')}
+                 for c in (message.tool_calls or [])]
+        return {'content': message.content or '', 'tool_calls': calls}
 
     def stream(self, messages, cfg, stats):
         try:
@@ -309,6 +360,33 @@ class LLMGateway:
                                  prompt_tokens=usage.get('prompt_tokens'),
                                  output_tokens=usage.get('output_tokens'),
                                  used_fallback=is_fallback)
+            except LLMError as error:
+                last_error = error
+            finally:
+                self.limiter.release()
+        raise last_error
+
+    def chat_tools(self, agent_cfg, messages, priority, tools):
+        """
+        Một lượt hội thoại có công cụ. Trả về dict: content, tool_calls, provider, model,
+        duration_s. Vòng lặp gọi công cụ do tầng dịch vụ điều khiển.
+        """
+
+        if not agent_cfg.enabled:
+            raise LLMError(f'Agent {agent_cfg.agent_id} đang tắt')
+        last_error = None
+        for provider, model, is_fallback in self._targets(agent_cfg):
+            adapter = self._adapter(provider)
+            if not hasattr(adapter, 'chat_tools'):
+                last_error = LLMError(f'Provider {provider} không hỗ trợ gọi công cụ')
+                continue
+            self.limiter.acquire(priority, timeout=self.queue_timeout_s)
+            started = time.perf_counter()
+            try:
+                result = adapter.chat_tools(messages, self._cfg(agent_cfg, model), tools)
+                content = clean_response(result.get('content') or '')
+                return {**result, 'content': content, 'provider': provider, 'model': model,
+                        'used_fallback': is_fallback, 'duration_s': time.perf_counter() - started}
             except LLMError as error:
                 last_error = error
             finally:

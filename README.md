@@ -69,6 +69,8 @@ streamlit run ui/Home.py
   python -m scripts.staff grant lan level C2 --reason "Đã xác minh chứng chỉ"
   ```
   Cần `AUTH_SECRET` trong `.env` để phiên đăng nhập không mất khi khởi động lại backend.
+- **Tài khoản thử:** đặt `DEMO_MODE=true` trong `.env` thì backend tạo sẵn `demo_c1` (Điều dưỡng, C1), `demo_c2` (Dược sĩ, C2), `demo_c3` (Bác sĩ, C3), `demo_quanly` (chỉ quản lý, không nhận chat); màn đăng nhập cho chọn tài khoản, không cần mật khẩu. Mỗi khung một phiên riêng: trang *Người trực* chỉ liệt kê tài khoản người trực, trang *Quản lý*/*Phân quyền* chỉ liệt kê tài khoản quản lý. **Vận hành thật phải để `DEMO_MODE=false`.**
+- **Quản lý (P3):** trang *Quản lý* (chat với agent quản lý, báo cáo nhanh, bảng trạng thái, ⚡ điều chỉnh nhanh) và trang *Phân quyền* (chứng chỉ, cấp chuyên môn, quyền thao tác, lịch sử). Tài khoản cần vai trò `manager`: `python -m scripts.staff create quanly "Tên" --roles operator,manager`.
 - `app.py` là giao diện cũ (một trang, tự mở Qdrant). **Không chạy cùng lúc với backend.** Sẽ bỏ khi hết P1.
 
 ## Kiểm thử

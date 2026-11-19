@@ -83,6 +83,30 @@ def login(body: LoginRequest, core=Depends(get_core)):
             'staff': staff_public(staff, core.permissions.effective(staff.id))}
 
 
+class DemoLogin(BaseModel):
+    username: str
+
+
+@router.get('/demo-accounts')
+def demo_accounts(core=Depends(get_core)):
+    """Tài khoản thử để chọn nhanh – chỉ có khi DEMO_MODE bật."""
+    from fastapi import HTTPException
+    from backend.services.demo import demo_accounts as rows
+    if not core.demo:
+        raise HTTPException(404, 'Không bật chế độ chạy thử')
+    return rows(core.storage, core.permissions)
+
+
+@router.post('/demo-login')
+def demo_login(body: DemoLogin, core=Depends(get_core)):
+    from fastapi import HTTPException
+    from backend.services.demo import demo_login as login_as
+    if not core.demo:
+        raise HTTPException(404, 'Không bật chế độ chạy thử')
+    staff, token = login_as(core.storage, core.signer, body.username)
+    return {'token': token, 'staff': staff_public(staff, core.permissions.effective(staff.id))}
+
+
 @router.get('/me')
 def me(staff=Depends(current_staff), core=Depends(get_core)):
     return staff_public(staff, core.permissions.effective(staff.id),

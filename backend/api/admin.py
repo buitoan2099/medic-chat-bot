@@ -119,6 +119,19 @@ def rebuild(core=Depends(get_core), actor=Depends(require_admin)):
         raise HTTPException(409, str(error))
 
 
+class ResumeRequest(BaseModel):
+    collection: Optional[str] = None
+
+
+@router.post('/index/resume')
+def resume(body: ResumeRequest, core=Depends(get_core), actor=Depends(require_admin)):
+    """Tiếp tục lần lập chỉ mục dở dang (bỏ qua các batch đã có)."""
+    try:
+        return core.index.start_resume(actor, body.collection)
+    except RuntimeError as error:
+        raise HTTPException(409, str(error))
+
+
 @router.post('/index/cancel')
 def cancel(core=Depends(get_core)):
     core.index.cancel()
@@ -156,7 +169,7 @@ def search(q: str, method: str = 'hybrid', k: int = 10, collection: Optional[str
         return {'results': results, 'warning': None}
     if method not in ('hybrid', 'bm25'):
         raise HTTPException(400, 'method phải là hybrid | bm25 | dense')
-    result = rag.retrieve(q, k=k, client=client,
+    result = rag.retrieve(q, k=k, client=client, bm25_weights=core.config.bm25_weights(),
                           use_dense=(method == 'hybrid' and core.index.has_vectors(collection)),
                           collection=collection, min_score=None)
     return {'results': result['results'], 'warning': result.get('warning')}

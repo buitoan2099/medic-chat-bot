@@ -96,3 +96,17 @@ def test_ollama_circuit_breaker_fails_fast_after_connection_error():
         with pytest.raises(LLMError):
             adapter.chat([], conf)
     assert DeadSession.calls == 1          # lần 2, 3 báo lỗi ngay, không gọi mạng
+
+
+def test_chat_tools_returns_calls_and_cleans_content():
+    def tools_responder(messages, tools):
+        if messages[-1]['role'] == 'tool':
+            return {'content': '<think>x</think>Đã xong'}
+        return {'tool_calls': [{'name': tools[0]['function']['name'], 'arguments': {'a': 1}}]}
+
+    gw = LLMGateway({'fake': FakeAdapter(tool_responder=tools_responder)})
+    tools = [{'type': 'function', 'function': {'name': 'list_staff', 'parameters': {}}}]
+    first = gw.chat_tools(cfg(), [{'role': 'user', 'content': 'x'}], 4, tools)
+    assert first['tool_calls'] == [{'name': 'list_staff', 'arguments': {'a': 1}}]
+    final = gw.chat_tools(cfg(), [{'role': 'tool', 'content': '{}'}], 4, tools)
+    assert final['content'] == 'Đã xong' and final['tool_calls'] == []

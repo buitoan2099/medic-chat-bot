@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.core import LOCAL_TZ, parse_iso  # noqa: E402
 from ui import api_client as api  # noqa: E402
+from ui.staff_login import logout, require_staff  # noqa: E402
 
 st.set_page_config(page_title='Người trực', page_icon='🧑‍⚕️', layout='wide')
 state = st.session_state
@@ -34,27 +35,11 @@ def minutes(seconds):
     return f'{int(seconds // 60)}′{int(seconds % 60):02d}″'
 
 
-# ---------- đăng nhập ----------
+# ---------- đăng nhập (dùng chung; có chọn tài khoản thử khi DEMO_MODE) ----------
 
-if not state.op_token:
-    st.title('🧑‍⚕️ Đăng nhập người trực')
-    with st.form('login'):
-        username = st.text_input('Tên đăng nhập')
-        password = st.text_input('Mật khẩu', type='password')
-        if st.form_submit_button('Đăng nhập', type='primary'):
-            try:
-                state.op_token = api.operator_login(username, password)['token']
-                st.rerun()
-            except api.BackendError as error:
-                st.error(str(error))
-    st.stop()
-
-op = api.Operator(state.op_token)
-try:
-    me = op.me()
-except api.BackendError:
-    state.op_token = None
-    st.rerun()
+if not state.get('op_token'):
+    st.title('🧑‍⚕️ Người trực')
+op, me = require_staff('operator', api.Operator, sidebar=False)
 caps = me['effective']['capabilities']
 
 # ---------- thanh bên: thông tin & trạng thái trực (UI-2.9) ----------
@@ -78,8 +63,7 @@ with st.sidebar:
                 op.presence(status, force=True)
                 st.rerun()
     if st.button('Đăng xuất'):
-        state.op_token = None
-        st.rerun()
+        logout('operator')
 
 left, middle, right = st.columns([1.1, 2.2, 1.6])
 

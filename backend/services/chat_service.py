@@ -103,6 +103,10 @@ class ChatService:
         self._event(updated, 'queued', 'system', None,
                     {'required_level': updated.required_level, 'urgency': updated.urgency})
         message = self._add_message(updated, SenderType.system, QUEUED_TEXT, kind='notice')
+        # Hồ sơ ca + tóm tắt cho người trực: chạy MỘT lần khi chuyển, không chạy sau mỗi tin ở
+        # chế độ AI (Ollama xử lý tuần tự – chạy nền liên tục làm phân loại phải xếp hàng).
+        if self.case_memory is not None and self.background is not None:
+            self.background.submit(self.case_memory.update, conversation_id)
         return self.get(conversation_id), message
 
     # ---------- gửi tin ----------
@@ -131,6 +135,7 @@ class ChatService:
         """
         Generator các sự kiện cho SSE:
           {'type': 'message', 'message': ...}  tin đã lưu (tin khách, thẻ hệ thống)
+          {'type': 'status', 'stage': ...}     bước đang chạy: classifying | searching | generating
           {'type': 'triage', ...}
           {'type': 'token', 'text': ...}       chữ của câu trả lời AI
           {'type': 'done', 'message': ...}     câu trả lời AI đã lưu
@@ -148,9 +153,8 @@ class ChatService:
         user_message = self._add_message(conversation, SenderType.end_user, text,
                                          sender_id=conversation.end_user_id)
         yield {'type': 'message', 'message': user_message.model_dump(mode='json')}
-        if self.case_memory is not None and self.background is not None:
-            self.background.submit(self.case_memory.update, conversation.id)
 
+        yield {'type': 'status', 'stage': 'classifying'}
         outcome = self.triage.classify(
             text, ctx.profile_text(conversation),
             ctx.history_lines(history, ctx.BUDGET['history'] // 4), conversation.id)
@@ -174,12 +178,13 @@ class ChatService:
     def _answer(self, conversation, history, question, triage):
         settings = self.config.settings()
         collection = settings['active_collection']
+        yield {'type': 'status', 'stage': 'searching'}
         retrieval = rag.retrieve(
-            question, k=settings['top_k'], history=[m.content for m in history
-                                                    if m.sender_type == SenderType.end_user],
+            question, k=settings['top_k'],
+            history=[m.content for m in history if m.sender_type == SenderType.end_user],
             client=self.index.client, use_dense=self.index.has_vectors(collection),
             collection=collection, min_score=settings['min_score'],
-            candidate_k=settings['candidate_k'])
+            candidate_k=settings['candidate_k'], bm25_weights=self.config.bm25_weights())
         if retrieval.get('warning'):
             yield {'type': 'warning', 'detail': retrieval['warning']}
         blocks = rag.build_context_blocks(retrieval['results'], collection,
@@ -196,6 +201,7 @@ class ChatService:
                     estimated_prompt_tokens=estimate)
         stats = StreamStats()
         parts = []
+        yield {'type': 'status', 'stage': 'generating'}
         try:
             for piece in self.gateway.stream(cfg, messages, PRIORITY_INTERACTIVE, stats):
                 parts.append(piece)

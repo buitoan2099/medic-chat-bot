@@ -150,6 +150,7 @@ class OperatorService:
     def claim(self, staff_id, conversation_id):
         """BR-01: tiếp nhận có khoá – hai người bấm cùng lúc, đúng một người thành công."""
 
+        self.permissions.require_role(staff_id, 'operator')
         self.permissions.require(staff_id, 'chat.claim')
         current = self.storage.conversations.get(conversation_id)
         ok, reason = self._can_take(staff_id, current.required_level.value)
@@ -435,6 +436,8 @@ class OperatorService:
     def set_presence(self, staff_id, status, force=False):
         """UI-2.9: rời ca khi còn cuộc chat -> phải chuyển; force=True trả về hàng chờ."""
 
+        if status == 'online':
+            self.permissions.require_role(staff_id, 'operator')
         active = self.mine(staff_id)['assigned']
         if status == 'offline' and active and not force:
             raise OperatorError(f'Bạn còn {len(active)} cuộc chat đang phụ trách. '

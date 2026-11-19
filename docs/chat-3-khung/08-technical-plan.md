@@ -219,6 +219,55 @@ Khi rule set **chưa được duyệt** (feature flag tắt), chỉ áp dụng q
 | AC-1.5, 1.6, 2.1–2.9 | Có test tự động (tổng 105 test), **LLM giả lập** |
 | Chưa làm (chuyển sang P3/P4): AI trả lời trong lúc chờ (Q-4), trạng thái `abandoned`, khảo sát cuối cuộc chat (UI-1.8), vị trí hàng chờ/thời gian ước tính (UI-1.5), âm báo (UI-2.10), danh mục thuốc kê đơn chính thức (Q-2 – file đang trống) | Ghi nhận |
 
+**Tiến độ P3 (18/11/2026):**
+
+| Việc | Trạng thái |
+|---|---|
+| MetricsService: chỉ số đặc tả 01 mục 4 tính từ sự kiện (BR-11); test đối chiếu số tính tay | Xong. Sửa định nghĩa "phản hồi TB" chỉ tính tin khách sau khi được giao |
+| Form F-1…F-5 dựng bằng **code**; AG-7 chỉ viết phần nhận định (ghi rõ "AI – cần thẩm định") | Xong |
+| Gọi công cụ trong LLMGateway (Ollama `tools`, OpenAI, giả lập) | Xong |
+| AG-7: 9 công cụ đọc + 2 công cụ đề xuất; hỏi lại khi trùng tên; đề xuất kiểm tra hợp lệ ngay (AC-3.3); xác nhận/huỷ (D-6) | Xong |
+| Báo cáo nhanh không cần LLM (UI-3.4), phiên quản lý được lưu, tải form Markdown (UI-3.5) | Xong. Xuất PDF để P5 |
+| Bảng trạng thái (UI-3.3), xem cuộc chat chỉ đọc có nhật ký (UI-3.6, SEC-6) | Xong |
+| Popup điều chỉnh nhanh (người trực / chỉ định / agent, bắt buộc lý do) | Xong; API có test, **giao diện popup chưa kiểm bằng AppTest** |
+| Trang phân quyền: chứng chỉ + xác minh, cấp/quyền có hiệu lực từ–đến, mẫu quyền, lịch sử, cảnh báo hết hạn / vượt quyền | Xong |
+| AC-3.1–3.6, AC-4.6 | Có test tự động (tổng 123 test), **AG-7 giả lập theo kịch bản** |
+
+**Kết quả P0 với Ollama thật (18/11/2026):**
+
+*Truy xuất* (`evaluation/run_eval.py --api`, 167 câu; page@1 = đúng thuốc ở vị trí đầu, section@1 = đúng cả mục):
+
+| Phương án | page@1 | section@1 | Câu viết tay page@1 |
+|---|---|---|---|
+| Hệ thống cũ (chunk theo trang, chỉ vector) | 0,689 | 0,228 | 0,750 |
+| Mới – chỉ vector | 0,802 | 0,413 | 0,900 |
+| Mới – vector + BM25 trọng số ngang (bản đầu) | 0,731 | 0,383 | 0,650 |
+| **Mới – BM25 chỉ cho câu không dấu (đang dùng)** | **0,796** | **0,503** | **0,900** |
+
+*Năng lực Mac mini* (qwen3:14b, Ollama 0.40, [báo cáo đo](../benchmarks/ollama-20261118-2035.md)):
+
+| Chỉ số | Đo được |
+|---|---|
+| Đọc prompt | ~100–117 token/giây |
+| Sinh câu trả lời | ~9–10,7 token/giây |
+| Xử lý song song | **Tuần tự** (1 yêu cầu một lúc) → `llm_max_parallel = 1` |
+| RAM | qwen3 16k 11,2 GB + bge-m3 0,7 GB, nằm cùng lúc được |
+| Embedding | 0,06 s/truy vấn (0,38 s khi đang sinh) |
+| Ký tự/token (nội dung tài liệu) | ~3,2 → ước lượng dùng 2,8 |
+
+*Thời gian thực tế từng tác vụ (lần chạy thử 3 khung):* phân loại AG-0 12–15 s; AI trả lời (chế độ AI) chữ đầu ~38 s, xong ~43 s; copilot ~115 s; kiểm tra trước khi gửi AG-6 ~10 s; AG-7 37–94 s.
+
+*Kết luận – đề xuất chốt lại NFR (cần xác nhận):*
+
+| NFR | Mục tiêu cũ | Thực tế với qwen3:14b / 1 Mac mini | Đề xuất |
+|---|---|---|---|
+| NFR-2 phân loại | ≤ 3 s | 12–15 s | ≤ 20 s (quy tắc cấp cứu vẫn tức thì) |
+| NFR-1 gợi ý copilot | ≤ 15 s | ~115 s | ≤ 2 phút, sinh nền, người trực không phải chờ |
+| AI trả lời (chữ đầu tiên) | — | ~38 s | ≤ 45 s |
+| NFR-4 người trực đồng thời | 20 | Ollama tuần tự: mỗi tin khách ở chế độ người trực tốn ~2–3 phút GPU (AG-5 + copilot + AG-6) | **~3–5 người trực** thực tế; 20 người cần máy GPU mạnh hơn hoặc model nhỏ hơn cho AG-0/5/6 (xem lại Q-D) |
+
+Đã áp dụng theo số đo: thời gian chờ từng agent, `llm_max_parallel = 1`, AG-5 ở chế độ AI chỉ chạy khi chuyển người trực, nhắc AG-7 không chép số liệu sau khi thẻ form đã hiển thị.
+
 **Phụ thuộc chặn tiến độ:**
 - **Ollama/Tailscale** chặn P0 (đo năng lực, embed) và mọi kiểm thử end-to-end.
 - **Hội đồng duyệt `phan-tang.md`** chặn bật rule set ở P4. P1–P3 vẫn chạy được với quy tắc an toàn tối thiểu.

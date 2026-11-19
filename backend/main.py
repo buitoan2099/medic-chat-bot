@@ -23,12 +23,14 @@ from backend.services.auth import AuthError, TokenSigner
 from backend.services.copilot import CaseMemoryService, CopilotService
 from backend.services.guard import GuardService
 from backend.services.index_manager import IndexManager, open_qdrant
+from backend.services.manager_agent import ManagerAgentService, ManagerError
+from backend.services.metrics import MetricsService
 from backend.services.operator_service import OperatorError, OperatorService, SlaMonitor
 from backend.services.permissions import PermissionError_, PermissionService
 from backend.services.triage import TriageService
 from backend.storage.base import ConflictError, NotFoundError
 from backend.storage.local import LocalStorage
-from config import AUTH_SECRET, OPENAI_API_KEY, OPENAI_BASE_URL, STORAGE_DIR, sidecar_paths
+from config import AUTH_SECRET, DEMO_MODE, OPENAI_API_KEY, OPENAI_BASE_URL, STORAGE_DIR, sidecar_paths
 
 log = logging.getLogger('backend')
 
@@ -44,7 +46,7 @@ class InlineExecutor:
             future.set_exception(error)
         return future
 
-    def shutdown(self, wait=True):
+    def shutdown(self, wait=True, cancel_futures=False):
         pass
 
 
@@ -70,11 +72,14 @@ class AppState:
     signer: TokenSigner
     operator: OperatorService
     background: object
+    manager: object = None
+    metrics: object = None
     sla: object = None
+    demo: bool = False
 
 
 def build_state(storage_dir=STORAGE_DIR, adapters=None, qdrant=True, background='thread',
-                auth_secret=None):
+                auth_secret=None, demo=None):
     storage = LocalStorage(storage_dir)
     config = ConfigService(storage)
     config.ensure_seeded()
@@ -104,8 +109,14 @@ def build_state(storage_dir=STORAGE_DIR, adapters=None, qdrant=True, background=
     chat = ChatService(storage, config, gateway, triage, index, operator=operator,
                        case_memory=case_memory, background=executor)
     sla = SlaMonitor(operator) if background != 'inline' else None
+    manager = ManagerAgentService(storage, gateway, config, permissions, operator, index)
+    demo = DEMO_MODE if demo is None else demo
+    if demo:
+        from backend.services.demo import ensure_demo_accounts
+        ensure_demo_accounts(storage, permissions)
+        log.warning('DEMO_MODE đang bật: có tài khoản demo_* đăng nhập không cần mật khẩu')
     return AppState(storage, config, gateway, index, triage, chat, permissions, signer, operator,
-                    executor, sla)
+                    executor, manager, MetricsService(storage), sla, demo)
 
 
 def create_app(state_factory=None):
@@ -119,14 +130,16 @@ def create_app(state_factory=None):
         yield
         if app.state.core.sla is not None:
             app.state.core.sla.stop()
-        app.state.core.background.shutdown(wait=False)
+        # Huỷ tác vụ AI nền chưa chạy để tắt nhanh (tác vụ đang gọi Ollama vẫn phải chờ hết)
+        app.state.core.background.shutdown(wait=False, cancel_futures=True)
         client = app.state.core.index.client
         if client is not None:
             client.close()
 
     app = FastAPI(title='Medic Chat Bot – backend', version='0.1.0', lifespan=lifespan)
-    from backend.api import admin, chat, operator
+    from backend.api import admin, chat, manager, operator
     app.include_router(chat.router)
+    app.include_router(manager.router)
     app.include_router(admin.router)
     app.include_router(operator.router)
     app.include_router(operator.manager_router)
@@ -134,8 +147,12 @@ def create_app(state_factory=None):
     @app.get('/api/health')
     def health():
         core = app.state.core
+        job = core.index.job
         return {'status': 'ok', 'qdrant_open': core.index.client is not None,
                 'active_collection': core.config.settings()['active_collection'],
+                # Home dùng để báo khách khi chỉ mục chưa sẵn sàng (tra cứu chỉ bằng từ khoá)
+                'vectors_ready': core.index.has_vectors(),
+                'index_job_running': bool(job and job.status == 'running'),
                 'llm_queue': core.gateway.limiter.queue_length}
 
     @app.exception_handler(NotFoundError)
@@ -149,6 +166,7 @@ def create_app(state_factory=None):
     @app.exception_handler(ChatError)
     @app.exception_handler(ConfigError)
     @app.exception_handler(OperatorError)
+    @app.exception_handler(ManagerError)
     @app.exception_handler(ValueError)
     async def bad_request(_, exc):
         return JSONResponse({'detail': str(exc)}, status_code=400)

@@ -119,8 +119,21 @@ def _bm25(collection):
     return get_index(sidecar_paths(collection or COLLECTION_NAME)[1])
 
 
+# Trọng số BM25 khi gộp với vector (đã đo trên evaluation/, 18/11/2026):
+# - câu CÓ DẤU: BM25 chỉ làm kém đi (vector hiểu tốt) -> 0
+# - câu KHÔNG DẤU: embedding hiểu kém tiếng Việt không dấu, BM25 (bỏ dấu) giúp tìm đúng mục -> 1
+BM25_WEIGHT_ACCENTED = 0.0
+BM25_WEIGHT_UNACCENTED = 1.0
+
+
+def has_accent(text):
+    """Câu có ký tự chữ ngoài ASCII (dấu tiếng Việt)."""
+    return any(ord(c) > 127 and c.isalpha() for c in text)
+
+
 def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True, collection=None,
-             query_override=None, min_score=MIN_SCORE, candidate_k=CANDIDATE_K):
+             query_override=None, min_score=MIN_SCORE, candidate_k=CANDIDATE_K,
+             bm25_weights=None):
     """
     Tìm các đoạn liên quan đến câu hỏi.
 
@@ -134,6 +147,7 @@ def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True, colle
         query_override (str | None): truy vấn dựng sẵn (vd câu hỏi + hồ sơ ca);
             khi có thì bỏ qua cơ chế ghép câu hỏi trước.
         min_score (float | None): ngưỡng cosine; None = không áp ngưỡng.
+        bm25_weights (tuple | None): (trọng số câu có dấu, câu không dấu) khi gộp với vector.
 
     Returns:
         dict: results (list), query (str), carried (bool),
@@ -160,11 +174,11 @@ def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True, colle
 
     candidates = {}  # chunk id -> {'text', 'metadata', 'rrf', 'dense'}
 
-    def add(rank, chunk_id, text, metadata, dense=None):
+    def add(rank, chunk_id, text, metadata, dense=None, weight=1.0):
         entry = candidates.setdefault(chunk_id, {
             'text': text, 'metadata': metadata, 'rrf': 0.0, 'dense': None,
         })
-        entry['rrf'] += 1.0 / (RRF_K + rank)
+        entry['rrf'] += weight / (RRF_K + rank)
         if dense is not None:
             entry['dense'] = max(entry['dense'] or 0.0, dense)
 
@@ -180,10 +194,13 @@ def retrieve(question, k=TOP_K, history=None, client=None, use_dense=True, colle
                 str(payload.get('page_content', '')), metadata, float(point.score))
         top_score = max((float(p.score) for p in points), default=0.0)
 
-    if bm25 is not None:
+    accented_w, plain_w = bm25_weights or (BM25_WEIGHT_ACCENTED, BM25_WEIGHT_UNACCENTED)
+    # Không có vector thì BM25 là nguồn duy nhất
+    bm25_weight = 1.0 if vector is None else (accented_w if has_accent(query) else plain_w)
+    if bm25 is not None and bm25_weight > 0:
         for rank, (doc, _) in enumerate(bm25.search(query, candidate_k), start=1):
             chunk = bm25.chunks[doc]
-            add(rank, chunk['id'], chunk['text'], dict(chunk['metadata']))
+            add(rank, chunk['id'], chunk['text'], dict(chunk['metadata']), weight=bm25_weight)
 
     base = {'query': query, 'carried': carried, 'top_score': top_score, 'warning': warning}
 

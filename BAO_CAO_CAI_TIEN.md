@@ -90,7 +90,18 @@ Không có mẫu header, khoảng trang hay tên mục nào được viết sẵ
 
 ---
 
-## 4. Kết quả đánh giá (đã đo)
+## 4. Kết quả đánh giá
+
+### 4.0 Đã đo đủ với vector (18/11/2026, sau khi embed `duoc_2018_v2`)
+
+| Phương án | Đúng thuốc ở vị trí đầu | Đúng cả mục ở vị trí đầu | Câu viết tay |
+|---|---|---|---|
+| Hệ thống cũ | 0,689 | 0,228 | 0,750 |
+| Hệ thống mới (đang dùng) | **0,796** | **0,503** | **0,900** |
+
+Cách gộp vector + BM25 đã được chỉnh theo số đo: câu có dấu chỉ dùng vector, câu không dấu gộp thêm BM25 (embedding hiểu kém tiếng Việt không dấu). Chi tiết và số đo năng lực Mac mini: [docs/chat-3-khung/08-technical-plan.md](docs/chat-3-khung/08-technical-plan.md) mục "Kết quả P0".
+
+### 4.1 Số liệu cũ (trước khi có vector)
 
 Chạy bằng [evaluation/run_eval.py](evaluation/run_eval.py) trên 167 câu hỏi:
 - 147 câu sinh theo mẫu, gồm tên chung, không dấu, biệt dược và chuyên đề;

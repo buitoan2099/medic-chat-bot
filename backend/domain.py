@@ -288,3 +288,41 @@ class GuardCheck(Record):
         if not self.local_date:
             from backend.core import parse_iso
             self.local_date = local_date(parse_iso(self.created_at))
+
+
+# ---------- quản lý (P3) ----------
+
+class ManagerSession(Record):
+    manager_id: str
+    title: str = 'Phiên làm việc'
+    days: list[str] = Field(default_factory=list)
+    updated_at: str = Field(default_factory=_now)
+
+
+class ManagerMessage(Record):
+    session_id: str
+    role: str                              # user | assistant
+    content: str = ''
+    # Thẻ có cấu trúc kèm theo: form (markdown dựng bằng code), bảng, đề xuất thao tác
+    cards: list[dict[str, Any]] = Field(default_factory=list)
+    local_date: str = ''
+
+    def model_post_init(self, _ctx):
+        if not self.local_date:
+            from backend.core import parse_iso
+            self.local_date = local_date(parse_iso(self.created_at))
+
+
+class ActionProposal(Record):
+    """Thao tác ghi do AG-7 đề xuất – chỉ thực hiện khi quản lý bấm Xác nhận (D-6)."""
+
+    session_id: Optional[str] = None
+    manager_id: str
+    kind: str                              # permission | assignment
+    payload: dict[str, Any]
+    summary: str = ''
+    before: dict[str, Any] = Field(default_factory=dict)
+    reason: str = ''
+    status: str = 'pending'                # pending | confirmed | cancelled | failed
+    decided_at: Optional[str] = None
+    result: Optional[str] = None

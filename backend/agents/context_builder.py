@@ -1,12 +1,14 @@
 """
 Dựng ngữ cảnh cho agent theo NGÂN SÁCH TOKEN (technical plan 5.2, xung đột X-6):
-không để Ollama cắt ngữ cảnh im lặng. Ước lượng token = ký tự / 2,5 (bảo thủ cho
-tiếng Việt), hiệu chỉnh sau bằng prompt_eval_count ghi trong AiRun.
+không để Ollama cắt ngữ cảnh im lặng. Ước lượng token = ký tự / 2,8 (đo thật ~3,2 trên
+nội dung tài liệu với qwen3), hiệu chỉnh tiếp bằng prompt_eval_count trong AiRun.
 """
 
 from backend.domain import SenderType
 
-CHARS_PER_TOKEN = 2.5
+# Đo thật trên qwen3:14b (18/11/2026, docs/benchmarks): nội dung tài liệu ~3,2–3,3 ký tự/token.
+# Dùng 2,8 để chừa biên cho prompt hệ thống (văn xuôi tiếng Việt, nhiều token hơn).
+CHARS_PER_TOKEN = 2.8
 
 BUDGET = {
     'system': 2500,

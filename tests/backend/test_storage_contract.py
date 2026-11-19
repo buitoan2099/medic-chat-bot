@@ -178,3 +178,24 @@ def test_guard_check_roundtrip(storage):
     check.confirmed_reason = 'đã hỏi bác sĩ'
     storage.guard_checks.update(check)
     assert storage.guard_checks.get(check.id).confirmed_reason == 'đã hỏi bác sĩ'
+
+
+# ---------- P3: phiên quản lý & đề xuất ----------
+
+from backend.domain import ActionProposal, ManagerMessage, ManagerSession  # noqa: E402
+
+
+def test_manager_session_messages_and_proposals(storage):
+    session = storage.manager.add_session(ManagerSession(manager_id='m1'))
+    storage.manager.add_message(ManagerMessage(session_id=session.id, role='user', content='hỏi'))
+    storage.manager.add_message(ManagerMessage(session_id=session.id, role='assistant', content='đáp',
+                                               cards=[{'type': 'form', 'markdown': '# F-2'}]))
+    fresh = storage.manager.get_session(session.id)
+    assert [m.role for m in storage.manager.messages(fresh)] == ['user', 'assistant']
+    assert [s.id for s in storage.manager.sessions_for('m1')] == [session.id]
+
+    proposal = storage.manager.add_proposal(ActionProposal(manager_id='m1', kind='permission',
+                                                           payload={'key': 'level'}))
+    proposal.status = 'confirmed'
+    storage.manager.update_proposal(proposal)
+    assert storage.manager.get_proposal(proposal.id).status == 'confirmed'

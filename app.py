@@ -1,7 +1,8 @@
 import json
-import re
+import queue
 import subprocess
 import sys
+import threading
 import time
 
 import streamlit as st
@@ -25,6 +26,7 @@ from config import (
 )
 from provider.llm import check_generation_connection
 from rag.lexical import get_index
+from rag.progress import ProgressTracker, human
 from rag.rag import (
     close_vector_store,
     get_vector_store,
@@ -115,7 +117,8 @@ def run_ingest(reset=False):
     progress = st.progress(0, text="Đang khởi động embedding...")
     progress_status = st.empty()
     output_lines = []
-    started = time.perf_counter()
+    tracker = ProgressTracker()
+    last_info = ""
 
     # Đóng client dùng chung và chặn mở lại cho tới khi ingest xong
     close_vector_store(pause=True)
@@ -129,28 +132,34 @@ def run_ingest(reset=False):
             encoding="utf-8",
             bufsize=1,
         )
+        # Đọc output ở luồng riêng để giao diện cập nhật mỗi giây, kể cả khi một batch
+        # embed mất lâu (trước đây đồng hồ chỉ nhảy khi có dòng tiến độ mới).
+        lines = queue.Queue()
+
+        def reader():
+            for raw in process.stdout:
+                lines.put(raw.rstrip())
+            lines.put(None)
+
+        threading.Thread(target=reader, daemon=True).start()
         try:
-            for line in process.stdout:
-                line = line.rstrip()
-                output_lines.append(line)
-
-                progress_match = re.search(
-                    r"(?:Đã lập chỉ mục\s+|Bỏ qua batch đã lập chỉ mục \()"
-                    r"(\d+)/(\d+)(?: chunks|\))",
-                    line,
-                )
-                if progress_match:
-                    completed = int(progress_match.group(1))
-                    total_chunks = int(progress_match.group(2))
-                    percent = min(completed / total_chunks, 1.0) if total_chunks else 0
-                    progress.progress(percent, text=f"Embedding: {completed:,}/{total_chunks:,} chunks")
-                    progress_status.caption(
-                        f"Đã xử lý {completed:,}/{total_chunks:,} chunks · "
-                        f"Đã chạy {time.perf_counter() - started:.1f} giây"
-                    )
-                elif line:
-                    progress_status.caption(line)
-
+            while True:
+                try:
+                    line = lines.get(timeout=1.0)
+                except queue.Empty:
+                    line = ""
+                if line is None:
+                    break
+                if line:
+                    output_lines.append(line)
+                    if not tracker.feed(line):
+                        last_info = line
+                if tracker.total:
+                    progress.progress(tracker.fraction,
+                                      text=f"Embedding: {tracker.done:,}/{tracker.total:,} chunks")
+                    progress_status.caption(tracker.text())
+                else:
+                    progress_status.caption(f"{last_info} · Đã chạy {human(tracker.elapsed)}")
             return_code = process.wait()
         finally:
             if process.stdout is not None:
@@ -164,7 +173,7 @@ def run_ingest(reset=False):
         raise RuntimeError(f"Ingest thất bại:\n{details}")
 
     progress.progress(1.0, text="Embedding hoàn tất")
-    progress_status.caption(f"Hoàn tất sau {time.perf_counter() - started:.1f} giây")
+    progress_status.caption(f"Hoàn tất sau {human(tracker.elapsed)}")
     return "\n".join(output_lines)
 
 

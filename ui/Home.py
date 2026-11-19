@@ -34,7 +34,7 @@ def reset():
 # ---------- kết nối backend ----------
 
 try:
-    api.health()
+    health = api.health()
 except api.BackendError as error:
     st.error('Không kết nối được máy chủ. Vui lòng thử lại sau.')
     st.caption(str(error))
@@ -59,6 +59,14 @@ with st.sidebar:
 
 st.title(APP_TITLE)
 st.caption(APP_SUBTITLE)
+
+if not health.get('vectors_ready', True):
+    # Chỉ mục vector chưa sẵn sàng: vẫn trả lời được nhưng tra cứu chỉ theo từ khoá
+    st.warning('Hệ thống tra cứu tài liệu đang được cập nhật; câu trả lời của AI có thể kém đầy đủ '
+               'hơn bình thường. Bạn vẫn có thể chọn trò chuyện với người trực.')
+    st.caption('Quản trị: ' + ('đang lập chỉ mục, xem tiến độ ở trang Cấu hình model.'
+                               if health.get('index_job_running')
+                               else 'vào trang Cấu hình model → Chỉ mục tài liệu để dựng hoặc tiếp tục.'))
 
 # ---------- bắt đầu: đồng ý + chọn chế độ (UI-1.1) ----------
 
@@ -159,24 +167,85 @@ for message in view['messages']:
 st.button('🧑‍⚕️ Chuyển sang người trực', on_click=go_human)      # UI-1.2
 
 question = st.chat_input('Nhập câu hỏi về thuốc...')
+if state.get('last_timing'):
+    st.caption(state.pop('last_timing'))
+
+STAGES = {'sending': 'Đang gửi câu hỏi', 'classifying': 'Đang phân loại câu hỏi',
+          'searching': 'Đang tìm trong tài liệu', 'generating': 'Đang soạn câu trả lời'}
+
+
+def stream_events(conversation_id, text, inbox):
+    """Đọc SSE ở luồng phụ để luồng chính rảnh cập nhật đồng hồ chờ."""
+    try:
+        for event in api.send_message(conversation_id, text):
+            inbox.put(event)
+    except api.BackendError as error:
+        inbox.put({'type': 'error', 'detail': str(error)})
+    except Exception as error:                     # mất kết nối, timeout...
+        inbox.put({'type': 'error', 'detail': f'Mất kết nối tới backend: {error}'})
+    inbox.put(None)
+
+
+def loading_html(label, seconds):
+    return (f'<div style="display:flex;align-items:center;gap:.6rem;opacity:.8">'
+            f'<div class="wait-dot"></div><span>{label}… <b>{seconds:.0f}s</b></span></div>'
+            '<style>.wait-dot{width:.8rem;height:.8rem;border-radius:50%;'
+            'border:2px solid currentColor;border-top-color:transparent;'
+            'animation:wait-spin .8s linear infinite}'
+            '@keyframes wait-spin{to{transform:rotate(360deg)}}</style>')
+
+
 if question:
+    import queue
+    import threading
+    import time
+
     with st.chat_message('user'):
         st.markdown(question)
-    extra = []
-
-    def tokens():
-        for event in api.send_message(state.conversation_id, question):
-            if event['type'] == 'token':
-                yield event['text']
-            elif event['type'] in ('message', 'error', 'warning'):
-                extra.append(event)
-
-    try:
-        with st.chat_message('assistant', avatar='🤖'):
-            st.write_stream(tokens())
-    except api.BackendError as error:
-        st.error(f'Lỗi: {error}')
-    for event in extra:
-        if event['type'] == 'error':
-            st.error(event['detail'])
+    inbox = queue.Queue()
+    threading.Thread(target=stream_events, args=(state.conversation_id, question, inbox),
+                     daemon=True).start()
+    start, first_token, stage = time.monotonic(), None, 'sending'
+    text, errors = '', []
+    with st.chat_message('assistant', avatar='🤖'):
+        body = st.empty()
+        timer = st.empty()
+        finished = False
+        while not finished:
+            try:
+                event = inbox.get(timeout=0.2)
+            except queue.Empty:
+                event = 'tick'
+            if event is None:
+                finished = True
+            elif event == 'tick':
+                pass
+            elif event['type'] == 'status':
+                stage = event['stage']
+            elif event['type'] == 'token':
+                if first_token is None:
+                    first_token = time.monotonic() - start
+                text += event['text']
+            elif event['type'] == 'error':
+                errors.append(event['detail'])
+            elif event['type'] == 'conversation':
+                state.conversation_id = event['id']
+            elif event['type'] == 'warning':
+                st.toast(event['detail'])
+            elapsed = time.monotonic() - start
+            if text:
+                body.markdown(text + ('' if finished else ' ▌'))
+                timer.caption(f'⏱ {elapsed:.0f}s')
+            elif not finished:
+                body.markdown(loading_html(STAGES.get(stage, 'Đang xử lý'), elapsed),
+                              unsafe_allow_html=True)
+    for detail in errors:
+        st.error(detail)
+    total = time.monotonic() - start
+    if first_token is not None:
+        state.last_timing = f'⏱ Bắt đầu trả lời sau {first_token:.0f}s · hoàn tất sau {total:.0f}s'
+    else:
+        state.last_timing = f'⏱ Xử lý trong {total:.0f}s'
+    if errors:
+        st.stop()      # giữ lỗi trên màn hình
     st.rerun()      # hiển thị lại theo dữ liệu đã lưu ở backend (thẻ hệ thống, nguồn)

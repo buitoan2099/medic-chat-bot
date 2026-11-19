@@ -6,6 +6,15 @@ Mỗi dòng có dạng [text, cỡ chữ, tỉ lệ in đậm] như rag.pdf_pars
 
 import pytest
 
+
+
+@pytest.fixture(autouse=True)
+def _no_demo_mode(monkeypatch):
+    """Test không phụ thuộc DEMO_MODE trong .env của máy (test demo tự truyền demo=True)."""
+    import backend.main
+    monkeypatch.setattr(backend.main, 'DEMO_MODE', False)
+
+
 DRUGS = ['Amoxicilin', 'Bisoprolol', 'Cefalexin', 'Diclofenac', 'Erythromycin', 'Furosemid']
 
 

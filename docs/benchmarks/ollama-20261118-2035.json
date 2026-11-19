@@ -1,0 +1,91 @@
+{
+  "time": "2026-11-18T20:29:01",
+  "base_url": "http://localhost:11434",
+  "ollama_version": "0.40.16",
+  "model": "qwen3:14b",
+  "embed_model": "bge-m3:latest",
+  "generation": [
+    {
+      "num_ctx": 8192,
+      "parallel": 1,
+      "prompt_chars": 15360,
+      "prompt_tokens": 4828,
+      "chars_per_token": 3.1814415907207954,
+      "truncated": false,
+      "ttft_s_median": 41.957046374998754,
+      "ttft_s_max": 41.957046374998754,
+      "total_s_median": 50.38674983300734,
+      "gen_tok_per_s_median": 10.66480482873923,
+      "prompt_tok_per_s_median": 116.50310383766244,
+      "expected_prompt_tokens": 6144,
+      "warmup_load_s": 1.953344667
+    },
+    {
+      "num_ctx": 8192,
+      "parallel": 2,
+      "prompt_chars": 15360,
+      "prompt_tokens": 4828.0,
+      "chars_per_token": 3.1814415907207954,
+      "truncated": false,
+      "ttft_s_median": 4.46354683348909,
+      "ttft_s_max": 8.754882499983069,
+      "total_s_median": 12.932651416980661,
+      "gen_tok_per_s_median": 10.626732133194555,
+      "prompt_tok_per_s_median": 49907.27786968594,
+      "expected_prompt_tokens": 6144,
+      "warmup_load_s": 1.953344667
+    },
+    {
+      "num_ctx": 16384,
+      "parallel": 1,
+      "prompt_chars": 30720,
+      "prompt_tokens": 9227,
+      "chars_per_token": 3.329359488457787,
+      "truncated": false,
+      "ttft_s_median": 90.21260012499988,
+      "ttft_s_max": 90.21260012499988,
+      "total_s_median": 118.78426949999994,
+      "gen_tok_per_s_median": 9.133172041281798,
+      "prompt_tok_per_s_median": 102.4804341172037,
+      "expected_prompt_tokens": 12288,
+      "warmup_load_s": 5.348475292
+    },
+    {
+      "num_ctx": 16384,
+      "parallel": 2,
+      "prompt_chars": 30720,
+      "prompt_tokens": 9227.0,
+      "chars_per_token": 3.329359488457787,
+      "truncated": false,
+      "ttft_s_median": 14.247771833499428,
+      "ttft_s_max": 28.24058883401449,
+      "total_s_median": 42.18094550000387,
+      "gen_tok_per_s_median": 9.20058805217807,
+      "prompt_tok_per_s_median": 84839.17899373623,
+      "expected_prompt_tokens": 12288,
+      "warmup_load_s": 5.348475292
+    }
+  ],
+  "embedding": {
+    "idle_query_s": 0.06343070798902772,
+    "idle_batch16_s": 0.5241740829951596,
+    "busy_query_s": 0.38222241698531434
+  },
+  "memory": {
+    "loaded_models": [
+      {
+        "name": "qwen3:14b",
+        "size_gb": 11.19,
+        "vram_gb": 10.74,
+        "context_length": 16384
+      },
+      {
+        "name": "bge-m3:latest",
+        "size_gb": 0.69,
+        "vram_gb": 0.69,
+        "context_length": 4096
+      }
+    ],
+    "both_resident": true
+  }
+}

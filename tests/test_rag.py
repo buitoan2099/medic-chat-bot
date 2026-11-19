@@ -92,3 +92,16 @@ def test_context_budget_respected(index, monkeypatch):
     hits = [{'id': c['id'], 'text': c['text'], 'metadata': c['metadata'], 'score': None}
             for c in (index.chunks[0], index.chunks[2])]
     assert len(rag.build_context_blocks(hits)) == 1    # khối đầu luôn có, khối sau vượt ngân sách
+
+
+def test_bm25_weight_depends_on_accents(index, monkeypatch):
+    """Có vector: câu có dấu không dùng BM25 (trọng số 0); câu không dấu có dùng."""
+    point = SimpleNamespace(score=0.9, id='v', payload={'page_content': 'Amoxicilin › Liều lượng\nx',
+                                                        'metadata': {'chunk_id': 'n1-c01', 'node_id': 'n1'}})
+    client = SimpleNamespace(query_points=lambda **kw: SimpleNamespace(points=[point]))
+    monkeypatch.setattr(rag, 'embed_query', lambda text: [0.1])
+    accented = rag.retrieve('chống chỉ định diclofenac', k=5, client=client, min_score=None)
+    assert [r['id'] for r in accented['results']] == ['n1-c01']          # chỉ kết quả vector
+    plain = rag.retrieve('chong chi dinh diclofenac', k=5, client=client, min_score=None)
+    assert 'n2-c01' in [r['id'] for r in plain['results']]               # BM25 góp thêm
+    assert rag.has_accent('Liều') and not rag.has_accent('lieu')

@@ -29,6 +29,9 @@ BACKEND_URL = os.getenv('BACKEND_URL', 'http://127.0.0.1:8000').rstrip('/')
 ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', '').strip()
 # Khoá ký token đăng nhập nhân sự (P2). Trống -> sinh tạm mỗi lần chạy (phải đăng nhập lại khi restart)
 AUTH_SECRET = os.getenv('AUTH_SECRET', '').strip()
+# Chế độ chạy thử: tạo sẵn tài khoản demo_* và cho đăng nhập một chạm (KHÔNG cần mật khẩu).
+# Chỉ bật khi thử nghiệm; vận hành thật phải tắt.
+DEMO_MODE = os.getenv('DEMO_MODE', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
 
 # ============================================================
 # TRUY XUẤT (RETRIEVAL)

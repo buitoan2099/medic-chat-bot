@@ -119,6 +119,9 @@ class Admin:
     def rebuild(self):
         return self._send('POST', '/api/admin/index/rebuild')
 
+    def resume_index(self, collection=None):
+        return self._send('POST', '/api/admin/index/resume', {'collection': collection})
+
     def cancel_rebuild(self):
         return self._send('POST', '/api/admin/index/cancel')
 
@@ -198,3 +201,77 @@ class Operator:
     def update_profile(self, conversation_id, fields):
         return self._req('PUT', f'/api/operator/conversations/{conversation_id}/profile',
                          {'fields': fields})
+
+
+# ---------- khung 3: quản lý ----------
+
+class Manager(Operator):
+    def sessions(self):
+        return self._req('GET', '/api/manager/sessions')
+
+    def new_session(self, title='Phiên làm việc'):
+        return self._req('POST', '/api/manager/sessions', {'title': title})
+
+    def session(self, session_id):
+        return self._req('GET', f'/api/manager/sessions/{session_id}')
+
+    def ask(self, session_id, text):
+        return self._req('POST', f'/api/manager/sessions/{session_id}/ask', {'text': text}, timeout=600.0)
+
+    def quick(self, session_id, action, args=None):
+        return self._req('POST', f'/api/manager/sessions/{session_id}/quick',
+                         {'action': action, 'args': args or {}}, timeout=120.0)
+
+    def decide(self, proposal_id, confirm):
+        return self._req('POST', f'/api/manager/proposals/{proposal_id}/decide', {'confirm': confirm})
+
+    def board(self):
+        return self._req('GET', '/api/manager/board')
+
+    def conversation(self, conversation_id):
+        return self._req('GET', f'/api/manager/conversations/{conversation_id}')
+
+    def staff(self):
+        return self._req('GET', '/api/manager/staff')
+
+    def grants(self, staff_id):
+        return self._req('GET', f'/api/manager/staff/{staff_id}/grants')
+
+    def grant(self, staff_id, key, value, reason, source='settings_page', effective_from=None,
+              effective_to=None):
+        return self._req('POST', f'/api/manager/staff/{staff_id}/grants',
+                         {'key': key, 'value': value, 'reason': reason, 'source': source,
+                          'effective_from': effective_from, 'effective_to': effective_to})
+
+    def credential(self, staff_id, credential, verify):
+        return self._req('PUT', f'/api/manager/staff/{staff_id}/credential',
+                         {'credential': credential, 'verify': verify})
+
+    def templates(self):
+        return self._req('GET', '/api/manager/templates')
+
+    def apply_template(self, staff_id, name, reason):
+        return self._req('POST', f'/api/manager/staff/{staff_id}/template', {'name': name, 'reason': reason})
+
+    def agents(self):
+        return self._req('GET', '/api/manager/agents')
+
+    def toggle_agent(self, agent_id, reason, **changes):
+        return self._req('PUT', f'/api/manager/agents/{agent_id}', {**changes, 'reason': reason})
+
+    def assign(self, conversation_id, staff_id, reason, override_level=False):
+        return self._req('POST', '/api/manager/assign', {'conversation_id': conversation_id,
+                                                         'staff_id': staff_id, 'reason': reason,
+                                                         'override_level': override_level})
+
+
+def demo_accounts():
+    """Tài khoản thử (rỗng nếu backend không bật DEMO_MODE)."""
+    with _client() as c:
+        response = c.get('/api/operator/demo-accounts')
+    return response.json() if response.status_code == 200 else []
+
+
+def demo_login(username):
+    with _client() as c:
+        return _check(c.post('/api/operator/demo-login', json={'username': username}))

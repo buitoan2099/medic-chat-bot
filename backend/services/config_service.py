@@ -12,10 +12,15 @@ from config import CANDIDATE_K, COLLECTION_NAME, MIN_SCORE, TOP_K
 DEFAULT_SETTINGS = {
     'active_collection': COLLECTION_NAME,
     'previous_collection': None,
-    'llm_max_parallel': 2,
+    # Khớp OLLAMA_NUM_PARALLEL (đo 18/11/2026: Mac mini xử lý tuần tự). Lớn hơn số Ollama
+    # chạy song song thì yêu cầu dồn ở Ollama (FIFO) và hàng đợi ưu tiên mất tác dụng.
+    'llm_max_parallel': 1,
     'top_k': TOP_K,
     'candidate_k': CANDIDATE_K,
     'min_score': MIN_SCORE,
+    # Trọng số BM25 khi gộp với vector: câu có dấu / không dấu (đo ở evaluation/, 18/11/2026)
+    'bm25_weight_accented': 0.0,
+    'bm25_weight_unaccented': 1.0,
     # Bộ quy tắc phân tầng (phan-tang.md) chỉ bật khi Hội đồng đã duyệt
     'tiering_rules_enabled': False,
     # Người trực (P2)
@@ -24,11 +29,17 @@ DEFAULT_SETTINGS = {
     'reopen_window_h': 24,               # BR-06
     'guard_block_mode': 'confirm',       # confirm | hard (Q-10: thí điểm = confirm)
     'guard_confirm_when_unavailable': True,
+    # Quản lý (P3): mẫu quyền áp nhanh (đặc tả 02 mục 5)
+    'permission_templates': {
+        'Dược sĩ mới': {'level': 'C1', 'ai.send_unedited': False, 'chat.max_concurrent': 3},
+        'Người trực chuẩn': {'ai.send_unedited': True, 'chat.max_concurrent': 5},
+    },
+    'credential_expiry_warning_days': 30,
 }
 
 # Ngân sách system prompt (technical plan 5.2): ~2.500 token ≈ 6.250 ký tự (2,5 ký tự/token)
 PROMPT_BUDGET_TOKENS = 2500
-CHARS_PER_TOKEN = 2.5
+CHARS_PER_TOKEN = 2.8   # đo thật: ~3,2 ký tự/token trên tài liệu (qwen3); chừa biên
 
 EDITABLE_FIELDS = {'provider', 'model', 'temperature', 'max_tokens', 'num_ctx', 'timeout_s',
                    'enabled', 'fallback_provider', 'fallback_model'}
@@ -132,6 +143,10 @@ class ConfigService:
 
     def settings(self):
         return {**DEFAULT_SETTINGS, **self.storage.config.get_settings()}
+
+    def bm25_weights(self):
+        settings = self.settings()
+        return (float(settings['bm25_weight_accented']), float(settings['bm25_weight_unaccented']))
 
     def update_settings(self, changes, actor):
         unknown = set(changes) - set(DEFAULT_SETTINGS)

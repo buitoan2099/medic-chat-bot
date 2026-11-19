@@ -47,6 +47,7 @@ class CopilotService:
         profile = conversation.profile
         query = ' '.join(x for x in (question, profile.chief_complaint) if x)
         retrieval = rag.retrieve(question, k=settings['top_k'], client=self.index.client,
+                                 bm25_weights=self.config.bm25_weights(),
                                  use_dense=self.index.has_vectors(collection), collection=collection,
                                  query_override=query, min_score=None,
                                  candidate_k=settings['candidate_k'])

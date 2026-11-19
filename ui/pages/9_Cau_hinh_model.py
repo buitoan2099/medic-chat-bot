@@ -145,7 +145,22 @@ with tab_index:
     if job:
         st.write(f'**Lập chỉ mục gần nhất:** {job["collection"]} · {job["status"]}'
                  + (f' · lỗi: {job["error"]}' if job.get('error') else ''))
+        if job.get('total'):
+            st.progress(min(job['done'] / job['total'], 1.0))
+        if job.get('progress_text'):
+            st.caption(job['progress_text'])
         st.code('\n'.join(job['log_tail']) or '(chưa có log)', language=None)
+
+    for item in status.get('resumable', []):
+        where = 'collection đang dùng' if item['is_active'] else 'lần dựng lại bị ngắt'
+        st.warning(f'Lập chỉ mục dở dang ({where}) `{item["collection"]}`: '
+                   f'{item["completed_chunks"]:,}/{item["total_chunks"] or 0:,} chunk.')
+        if st.button(f'▶️ Tiếp tục {item["collection"]}', key=f'resume-{item["collection"]}'):
+            try:
+                admin.resume_index(item['collection'])
+                st.success('Đã tiếp tục. Bấm "Làm mới" để xem tiến độ.')
+            except api.BackendError as error:
+                st.error(str(error))
 
     b1, b2, b3, b4 = st.columns(4)
     b1.button('🔄 Làm mới')

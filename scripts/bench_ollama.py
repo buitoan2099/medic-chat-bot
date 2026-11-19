@@ -23,6 +23,7 @@ import json
 import statistics
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -38,7 +39,7 @@ from config import (
 
 OUT_DIR = BASE_DIR / 'docs' / 'benchmarks'
 # Ước lượng ban đầu, được hiệu chỉnh lại bằng prompt_eval_count đo được
-CHARS_PER_TOKEN_GUESS = 2.5
+CHARS_PER_TOKEN_GUESS = 3.2
 # Tỉ lệ ngữ cảnh dùng cho prompt (phần còn lại dành cho đầu ra + biên)
 PROMPT_FILL = 0.75
 
@@ -67,6 +68,9 @@ def build_prompt(corpus, num_ctx):
 def chat_once(base, model, num_ctx, context, question, num_predict):
     """Một yêu cầu /api/chat dạng stream. Trả về số đo."""
 
+    # Mã ngẫu nhiên ở ĐẦU prompt: tránh Ollama tái dùng bộ đệm prompt giữa các yêu cầu
+    # (lần đo 18/11 bị sai ở dòng song song vì gửi cùng một prompt).
+    context = f'[Mã yêu cầu {uuid.uuid4().hex[:12]}]\n{context}'
     started = time.perf_counter()
     first_token = None
     final = {}
@@ -167,7 +171,7 @@ def main():
     print(f'Ollama {version} tại {base} · model {args.model} · embedding {args.embed_model}')
 
     corpus = load_corpus_text(int(max(ctx_list) * CHARS_PER_TOKEN_GUESS))
-    report = {'time': datetime.now().isoformat(timespec='seconds'), 'base_url': base,
+    report = {'time': datetime.now().isoformat(timespec='seconds'), 'base_url': 'local' if 'localhost' in base or '127.0.0.1' in base else 'remote (ẩn địa chỉ)',
               'ollama_version': version, 'model': args.model, 'embed_model': args.embed_model,
               'generation': [], 'embedding': {}, 'memory': {}}
 
