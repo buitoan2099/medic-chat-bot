@@ -25,7 +25,12 @@ def at(seconds):
 
 
 @pytest.fixture
-def metrics(tmp_path):
+def metrics(tmp_path, monkeypatch):
+    import backend.core
+    # ID (ULID) mang ngày tạo và quyết định thư mục ngày: cố định đồng hồ để dữ liệu mẫu
+    # nằm đúng ngày DAY, test không phụ thuộc ngày chạy.
+    monkeypatch.setattr(backend.core.time, 'time', lambda: T0.timestamp())
+    monkeypatch.setitem(backend.core._last, 'ms', 0)      # bộ sinh ID nhớ ms của lần trước
     st = LocalStorage(tmp_path / 'storage')
     st.conversations.add(Conversation(id='C1', end_user_id='u1', mode='human', status='closed',
                                       required_level='C2', days=[DAY]))
