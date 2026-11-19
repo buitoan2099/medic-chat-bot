@@ -157,7 +157,15 @@ with middle:
     def transcript():
         fresh = op.view(state.op_conv)
         box = st.container(height=420, autoscroll=True)
+        topic_marks = {e['data'].get('message_id'): e for e in fresh['events'] if e['type'] == 'topic_changed'}
         for message in fresh['messages']:
+            mark = topic_marks.get(message['id'])
+            if mark:
+                box.divider()
+                old = (mark['data'].get('previous') or {}).get('chief_complaint')
+                box.caption('🆕 **Khách chuyển sang hỏi vấn đề khác** – AI bỏ bệnh trước khỏi ngữ cảnh'
+                            + (f' (trước đó: {old})' if old else '')
+                            + {'staff': ' · do người trực đánh dấu'}.get(mark['actor_type'], ''))
             who = message.get('sender_name') or SENDER.get(message['sender_type'], '🧑‍⚕️')
             if message['sender_type'] == 'ai':
                 who += ' (chế độ AI)'
@@ -165,7 +173,8 @@ with middle:
             text = f'**{who}** · {hhmm(message["created_at"])}\n\n{message["content"]}'
             (style or box.markdown)(text)
         events = [e for e in fresh['events'] if e['type'] in
-                  ('claimed', 'assigned', 'transferred', 'escalated', 'reopened', 'sla_breached')]
+                  ('claimed', 'assigned', 'transferred', 'escalated', 'reopened', 'sla_breached',
+                   'topic_changed')]
         if events:
             st.caption('Sự kiện: ' + ' · '.join(f'{e["type"]} {hhmm(e["created_at"])}' for e in events))
 
@@ -251,6 +260,15 @@ with middle:
                 st.rerun()
             except api.BackendError as error:
                 st.error(str(error))
+    if st.button('🆕 Khách hỏi vấn đề mới', disabled=not owner,
+                 help='Bỏ bệnh trước khỏi ngữ cảnh AI (hồ sơ ca, gợi ý) từ tin mới nhất của khách, '
+                      'rồi tạo lại gợi ý. Dùng khi AI không tự nhận ra.'):
+        try:
+            op.new_topic(conv['id'])
+            st.toast('Đã đánh dấu vấn đề mới, đang tạo lại gợi ý…')
+            st.rerun()
+        except api.BackendError as error:
+            st.error(str(error))
     if b4.button('✅ Đóng cuộc chat'):
         op.close(conv['id'])
         state.op_conv = None
@@ -292,7 +310,9 @@ with right:
                       if stale else st.container())
             with holder:
                 stamp = hhmm(suggestion['created_at'])
-                st.caption(f'{suggestion["agent_id"]} · v{suggestion["prompt_version"]} · {stamp}'
+                st.caption(f'{suggestion["agent_id"]} · v{suggestion["prompt_version"]} · '
+                           f'{suggestion.get("model") or ""} · {stamp}'
+                           + (' · ⚠ model dự phòng (model chính lỗi/quá tải)' if suggestion.get('used_fallback') else '')
                            + (f' · {suggestion["outcome"]}' if suggestion.get('outcome') else ''))
                 scope = suggestion.get('scope_check') or {}
                 exceeds = scope.get('status') == 'exceeds'

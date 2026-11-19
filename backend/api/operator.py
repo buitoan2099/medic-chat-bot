@@ -209,6 +209,11 @@ def transfer_respond(conversation_id: str, body: TransferResponse, staff=Depends
     return conv_dump(core.operator.respond_transfer(staff.id, conversation_id, body.accept))
 
 
+@router.post('/conversations/{conversation_id}/new-topic')
+def new_topic(conversation_id: str, staff=Depends(current_staff), core=Depends(get_core)):
+    return conv_dump(core.operator.new_topic(staff.id, conversation_id))
+
+
 @router.post('/conversations/{conversation_id}/escalate')
 def escalate(conversation_id: str, body: EscalateRequest, staff=Depends(current_staff),
              core=Depends(get_core)):

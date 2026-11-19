@@ -18,6 +18,8 @@ DEFAULT_SETTINGS = {
     # Số chỗ giữ riêng cho việc gấp (phân loại, trả lời khách, kiểm tra trước khi gửi): gợi ý /
     # quản lý / hồ sơ ca không được chiếm. Chỉ có tác dụng khi llm_max_parallel >= 2.
     'llm_reserved_slots': 1,
+    # Dịch vụ đám mây (Gemini, OpenAI…) có hàng đợi riêng, không xếp sau Ollama
+    'remote_llm_max_parallel': 8,
     'top_k': TOP_K,
     'candidate_k': CANDIDATE_K,
     'min_score': MIN_SCORE,
@@ -56,7 +58,7 @@ CHARS_PER_TOKEN = 2.8   # đo thật: ~3,2 ký tự/token trên tài liệu (qwe
 
 EDITABLE_FIELDS = {'provider', 'model', 'temperature', 'max_tokens', 'num_ctx', 'timeout_s',
                    'enabled', 'fallback_provider', 'fallback_model'}
-ALLOWED_PROVIDERS = {'ollama', 'gemini', 'openai', 'fake'}
+ALLOWED_PROVIDERS = {'ollama', 'gemini', 'openrouter', 'openai', 'fake'}
 
 
 class ConfigError(ValueError):

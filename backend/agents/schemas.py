@@ -23,6 +23,8 @@ class CopilotOutput(BaseModel):
     appointment_needed: Optional[bool] = None
     confidence: Literal['high', 'medium', 'low'] = 'medium'
     confidence_reason: str = ''
+    # Câu hỏi hiện tại là bệnh / vấn đề KHÁC hẳn chủ đề trước (không phải hỏi tiếp)
+    topic_changed: bool = False
 
 
 class ProfileUpdate(BaseModel):

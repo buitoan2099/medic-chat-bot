@@ -16,7 +16,8 @@ from dataclasses import dataclass
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from backend.llm.gateway import FakeAdapter, LLMGateway, OllamaAdapter, OpenAICompatibleAdapter
+from backend.llm.gateway import (FakeAdapter, GeminiAdapter, LLMGateway, OllamaAdapter,
+                                 OpenAICompatibleAdapter)
 from backend.services.chat_service import ChatError, ChatService
 from backend.services.config_service import ConfigError, ConfigService
 from backend.services.auth import AuthError, TokenSigner
@@ -30,7 +31,8 @@ from backend.services.permissions import PermissionError_, PermissionService
 from backend.services.triage import TriageService
 from backend.storage.base import ConflictError, NotFoundError
 from backend.storage.local import LocalStorage
-from config import AUTH_SECRET, DEMO_MODE, OPENAI_API_KEY, OPENAI_BASE_URL, STORAGE_DIR, sidecar_paths
+from config import (AUTH_SECRET, DEMO_MODE, GEMINI_API_KEY, OPENAI_API_KEY, OPENAI_BASE_URL,
+                    OPENROUTER_API_KEY, OPENROUTER_BASE_URL, STORAGE_DIR, sidecar_paths)
 
 log = logging.getLogger('backend')
 
@@ -89,8 +91,14 @@ def build_state(storage_dir=STORAGE_DIR, adapters=None, qdrant=True, background=
         # Provider ngoài chỉ được đăng ký khi có khoá; agent vẫn mặc định dùng Ollama (Q-5)
         if OPENAI_API_KEY:
             adapters['openai'] = OpenAICompatibleAdapter(OPENAI_API_KEY, OPENAI_BASE_URL)
+        if GEMINI_API_KEY:
+            adapters['gemini'] = GeminiAdapter(GEMINI_API_KEY)
+        if OPENROUTER_API_KEY:
+            adapters['openrouter'] = OpenAICompatibleAdapter(OPENROUTER_API_KEY, OPENROUTER_BASE_URL,
+                                                             name='openrouter')
     gateway = LLMGateway(adapters, max_parallel=config.settings()['llm_max_parallel'])
     gateway.limiter.set_reserved(config.settings().get('llm_reserved_slots', 1))
+    gateway.set_remote_parallel(config.settings().get('remote_llm_max_parallel', 8))
 
     client = None
     if qdrant:

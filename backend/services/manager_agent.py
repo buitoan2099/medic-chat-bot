@@ -551,9 +551,12 @@ class ManagerAgentService:
                 if not result['tool_calls']:
                     content = result['content']
                     break
-                messages.append({'role': 'assistant', 'content': result['content'] or '',
-                                 'tool_calls': [{'function': {'name': c['name'], 'arguments': c['arguments']}}
-                                                for c in result['tool_calls']]})
+                assistant = {'role': 'assistant', 'content': result['content'] or '',
+                             'tool_calls': [{'function': {'name': c['name'], 'arguments': c['arguments']}}
+                                            for c in result['tool_calls']]}
+                if result.get('raw'):                 # Gemini: giữ thoughtSignature cho lượt sau
+                    assistant['raw'] = result['raw']
+                messages.append(assistant)
                 shown_forms = []
                 for call in result['tool_calls']:
                     data, card = self.run_tool(call['name'], call['arguments'], ctx)
@@ -561,8 +564,11 @@ class ManagerAgentService:
                         cards.append(card)
                         if card['type'] == 'form':
                             shown_forms.append(card['form'])
-                    messages.append({'role': 'tool', 'tool_name': call['name'],
-                                     'content': json.dumps(data, ensure_ascii=False, default=str)[:12000]})
+                    tool_message = {'role': 'tool', 'tool_name': call['name'],
+                                    'content': json.dumps(data, ensure_ascii=False, default=str)[:12000]}
+                    if call.get('id'):
+                        tool_message['tool_call_id'] = call['id']
+                    messages.append(tool_message)
                 if shown_forms:
                     # Đo thật: qwen3 vẫn chép lại bảng số liệu dù prompt đã dặn -> nhắc ngay
                     # trước lượt viết câu trả lời (BR-11: số liệu chỉ hiển thị qua thẻ do code dựng).

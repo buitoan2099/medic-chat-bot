@@ -10,7 +10,7 @@ Hệ thống gồm 3 khung và 2 trang quản trị, mở từ thanh bên trái 
 | **Người trực** (khung 2) | Điều dưỡng, dược sĩ, bác sĩ trực | Nhận và trả lời cuộc chat, có gợi ý AI |
 | **Quản lý** (khung 3) | Quản lý | Xem báo cáo, hỏi trợ lý AI, chỉ định cuộc chat, chỉnh quyền nhanh |
 | **Phân quyền** | Quản lý | Cấp độ chuyên môn, chứng chỉ, quyền chi tiết của từng người |
-| **Cấu hình model** | Quản trị (cần `ADMIN_TOKEN`) | Chọn model AI, sửa prompt, cài đặt, tạo chỉ mục tài liệu |
+| **Cấu hình model** | Quản trị (cần `ADMIN_TOKEN`, hoặc mở cho mọi người bằng `OPEN_MODEL_CONFIG`) | Chọn model AI, sửa prompt, cài đặt, tạo chỉ mục tài liệu |
 
 > **Nguyên tắc chung:** hệ thống **không kê đơn trực tuyến** ở bất kỳ cấp nào. AI chỉ trả lời thông tin có trong tài liệu (Dược thư Quốc gia 2018).
 
@@ -86,7 +86,16 @@ Thời gian chờ thực tế trên máy hiện tại:
   - **🔄 Tạo lại gợi ý:** có thể kèm chỉ dẫn, ví dụ "ngắn hơn, hỏi thêm cân nặng".
 - ⛔ **Gợi ý vượt quyền** (ví dụ gợi ý thuốc khi bạn là C1) có khung đỏ và **không gửi được** dưới mọi hình thức. Bạn vẫn **tự soạn trả lời** bình thường, hoặc dùng **⬆️ Đẩy cấp**.
 
-### 2.6 Chuyển, đẩy cấp, đóng
+### 2.6 Khách chuyển sang hỏi bệnh khác
+
+- AI tự nhận ra khi khách hỏi một **bệnh hoặc vấn đề khác hẳn** (không phải hỏi tiếp). Từ tin đó:
+  - AI bỏ bệnh trước khỏi ngữ cảnh: gợi ý và tìm tài liệu chỉ theo vấn đề mới;
+  - hồ sơ ca xoá *triệu chứng chính, khởi phát, mức độ* và tóm tắt cũ; vẫn giữ tuổi, dị ứng, bệnh nền, thuốc đang dùng, mang thai.
+- Lịch sử chat có vạch **🆕 Khách chuyển sang hỏi vấn đề khác** (kèm bệnh trước đó). Toàn bộ tin cũ vẫn còn để bạn xem.
+- AI không nhận ra thì bấm **🆕 Khách hỏi vấn đề mới**: hệ thống bỏ bệnh cũ từ tin mới nhất của khách và tạo lại gợi ý.
+- Cấp cần thiết và độ khẩn của cuộc chat **không bị hạ** khi đổi chủ đề. Muốn đổi người trực phù hợp thì dùng Chuyển hoặc nhờ quản lý chỉ định.
+
+### 2.7 Chuyển, đẩy cấp, đóng
 
 | Nút | Khi nào | Điều gì xảy ra |
 |---|---|---|
@@ -152,7 +161,7 @@ Gồm: số người đang trực theo cấp, số cuộc đang chờ và đang 
 
 ## 5. Trang Cấu hình model (quản trị)
 
-Nhập `ADMIN_TOKEN` (trong file `.env`) để vào.
+Nhập `ADMIN_TOKEN` (trong file `.env`) để vào. Nếu `.env` có `OPEN_MODEL_CONFIG=true`, **ai cũng vào chỉnh được** agent, prompt và cài đặt mà không cần khoá; riêng dựng lại, huỷ hay quay lại chỉ mục vẫn phải nhập khoá.
 
 ### 5.1 Agent và model
 
@@ -164,6 +173,8 @@ Nhập `ADMIN_TOKEN` (trong file `.env`) để vào.
 | AG-5 | Tóm tắt và điền hồ sơ ca | Chạy nền, sau gợi ý |
 | AG-6 | Kiểm tra trước khi gửi | **Mặc định tắt** |
 | AG-7 | Trợ lý quản lý | Chỉ đọc dữ liệu và tạo đề xuất |
+
+**⚡ Cấu hình chung:** chọn provider + model (ví dụ `gemini` · `gemini-3.5-flash-lite`), chọn các agent cần đổi (mặc định tất cả), chọn model dự phòng khi model chính lỗi hoặc quá tải (mặc định Ollama `qwen3:14b`), rồi bấm **Áp dụng**. Chọn `gemini` thì nội dung chat được gửi tới Google.
 
 Với từng agent có thể: đổi model, nhiệt độ, thời gian chờ; đặt model dự phòng; **thử nhanh**; sửa prompt (lưu thành phiên bản mới, quay lại bản cũ được).
 

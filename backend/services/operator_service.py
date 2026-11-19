@@ -332,6 +332,28 @@ class OperatorService:
 
     # ---------- gợi ý & gửi tin ----------
 
+    def new_topic(self, staff_id, conversation_id):
+        """Người trực đánh dấu: từ tin mới nhất của khách là vấn đề mới -> bỏ bệnh cũ, tạo lại gợi ý."""
+        from backend.services.topic import start_new_topic
+
+        current = self.storage.conversations.get(conversation_id)
+        if current.assignee_id != staff_id:
+            raise OperatorError('Chỉ người phụ trách mới đánh dấu được')
+        messages = self.storage.messages.list(current.id, current.days)
+        last = next((m for m in reversed(messages) if m.sender_type == SenderType.end_user), None)
+        if last is None:
+            raise OperatorError('Khách chưa nhắn tin nào')
+        if start_new_topic(self.storage, conversation_id, last.id, 'staff', staff_id,
+                           reason='người trực đánh dấu vấn đề mới') is None:
+            raise OperatorError('Tin này đã là mốc chủ đề hiện tại')
+        for old in self.storage.suggestions.for_conversation(current.id, current.days):
+            if old.outcome is None and old.status == 'ready':
+                old.outcome = 'superseded'
+                self.storage.suggestions.update(old)
+        self.schedule_copilot(conversation_id, staff_id,
+                              then=lambda: self.case_memory.update(conversation_id))
+        return self.storage.conversations.get(conversation_id)
+
     def regenerate(self, staff_id, conversation_id, instruction=None, background=True):
         current = self.storage.conversations.get(conversation_id)
         if current.assignee_id != staff_id:

@@ -165,6 +165,9 @@ class Operator:
     def claim(self, conversation_id):
         return self._req('POST', f'/api/operator/conversations/{conversation_id}/claim')
 
+    def new_topic(self, conversation_id):
+        return self._req('POST', f'/api/operator/conversations/{conversation_id}/new-topic')
+
     def check(self, conversation_id, text, suggestion_id=None):
         return self._req('POST', f'/api/operator/conversations/{conversation_id}/check',
                          {'text': text, 'suggestion_id': suggestion_id}, timeout=120.0)

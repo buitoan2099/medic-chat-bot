@@ -7,19 +7,26 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from config import ADMIN_TOKEN, OPEN_MODEL_CONFIG  # noqa: E402
 from ui import api_client as api  # noqa: E402
 
 st.set_page_config(page_title='Cấu hình model', page_icon='⚙️', layout='wide')
 st.title('⚙️ Cấu hình model')
 
 state = st.session_state
-token = st.sidebar.text_input('Khoá quản trị (ADMIN_TOKEN)', type='password',
-                              value=state.get('admin_token', ''))
-if not token:
+open_mode = OPEN_MODEL_CONFIG and bool(ADMIN_TOKEN)
+entered = st.sidebar.text_input('Khoá quản trị (ADMIN_TOKEN)'
+                                + (' – chỉ cần cho thao tác chỉ mục' if open_mode else ''),
+                                type='password', value=state.get('admin_token', ''))
+state.admin_token = entered
+privileged = bool(entered)              # đã nhập khoá: được làm cả thao tác chỉ mục
+if open_mode:
+    st.info('🔓 Trang đang **mở cho mọi người** (OPEN_MODEL_CONFIG): ai cũng chỉnh được agent, '
+            'prompt, cài đặt. Mọi thay đổi vẫn ghi nhật ký.')
+elif not entered:
     st.info('Nhập khoá quản trị ở thanh bên để tiếp tục.')
     st.stop()
-state.admin_token = token
-admin = api.Admin(token)
+admin = api.Admin(entered or ADMIN_TOKEN)
 
 try:
     agents = admin.agents()
@@ -27,7 +34,7 @@ except api.BackendError as error:
     st.error(f'Không truy cập được: {error}')
     st.stop()
 
-PROVIDERS = ['ollama', 'fake', 'gemini', 'openai']
+PROVIDERS = ['ollama', 'gemini', 'openrouter', 'openai', 'fake']
 st.caption('Provider bên ngoài (gemini/openai) **mặc định không dùng**: dữ liệu chat không được '
            'gửi ra ngoài khi chưa được duyệt (Q-5). `fake` chỉ để chạy thử.')
 
@@ -37,11 +44,65 @@ tab_agents, tab_prompts, tab_settings, tab_index = st.tabs(
 # ---------- agent & model ----------
 
 with tab_agents:
+    # ----- cấu hình chung: đổi provider/model cho nhiều agent một lần -----
+    DEFAULT_MODEL = {'ollama': 'qwen3:14b', 'gemini': 'gemini-3.5-flash-lite', 'openai': 'gpt-4o-mini',
+                     'openrouter': 'nvidia/nemotron-3-ultra-550b-a55b:free',
+                     'fake': 'fake'}
+    with st.container(border=True):
+        st.markdown('#### ⚡ Cấu hình chung cho nhiều agent')
+        st.caption('Đổi provider + model cho các agent đã chọn trong một lần. Các thông số khác '
+                   '(nhiệt độ, token, timeout) giữ nguyên.')
+        p1, p2 = st.columns([1, 2])
+        bulk_provider = p1.selectbox('Provider', PROVIDERS, key='bulk-provider',
+                                     index=PROVIDERS.index('gemini'))
+        bulk_model = p2.text_input('Model', DEFAULT_MODEL.get(bulk_provider, ''),
+                                   key=f'bulk-model-{bulk_provider}')
+        chosen = st.multiselect('Áp dụng cho agent', list(agents), default=list(agents),
+                                format_func=lambda a: agents[a]['title'], key='bulk-agents')
+        fallback_options = {
+            'Giữ nguyên dự phòng hiện tại': None,
+            'Không dùng dự phòng': ('', ''),
+            'Dự phòng: Ollama qwen3:14b': ('ollama', 'qwen3:14b'),
+            'Dự phòng: Gemini gemini-3.5-flash-lite': ('gemini', 'gemini-3.5-flash-lite'),
+            'Dự phòng: OpenRouter nemotron-3-ultra (free)': ('openrouter', 'nvidia/nemotron-3-ultra-550b-a55b:free'),
+        }
+        default_fb = 'Dự phòng: Ollama qwen3:14b' if bulk_provider != 'ollama' else 'Giữ nguyên dự phòng hiện tại'
+        fb_choice = st.selectbox('Model dự phòng (khi model chính lỗi / quá tải)', list(fallback_options),
+                                 index=list(fallback_options).index(default_fb), key=f'bulk-fb-{bulk_provider}')
+        if bulk_provider in ('gemini', 'openai', 'openrouter'):
+            st.warning('Nội dung chat (kể cả thông tin sức khoẻ) sẽ được gửi tới dịch vụ bên ngoài. '
+                       'Chỉ dùng khi đã chấp nhận điều này (Q-5).')
+        if st.button(f'Áp dụng cho {len(chosen)} agent', type='primary',
+                     disabled=not (chosen and bulk_model.strip())):
+            changes = {'provider': bulk_provider, 'model': bulk_model.strip()}
+            fb = fallback_options[fb_choice]
+            if fb is not None:
+                changes.update(fallback_provider=fb[0] or None, fallback_model=fb[1] or None)
+            done, failed = [], []
+            for agent_id in chosen:
+                try:
+                    admin.update_agent(agent_id, changes)
+                    done.append(agent_id)
+                except api.BackendError as error:
+                    failed.append(f'{agent_id}: {error}')
+            for line in failed:
+                st.error(line)
+            if done:
+                st.toast(f'Đã chuyển {len(done)} agent sang {bulk_provider} · {bulk_model.strip()}. '
+                         'Áp dụng từ tin nhắn tiếp theo.')
+                if not failed:
+                    st.rerun()
+        st.caption('Hiện tại: ' + ' · '.join(f'{agents[a]["title"]}: {agents[a]["provider"]}/{agents[a]["model"]}'
+                                               for a in agents))
+
     for agent_id, cfg in agents.items():
-        with st.expander(f'{cfg["title"]} (`{agent_id}`)', expanded=True):
+        with st.expander(f'{cfg["title"]} (`{agent_id}`) · {cfg["provider"]}/{cfg["model"]}'
+                         + (' · dự phòng ' + cfg['fallback_provider'] + '/' + (cfg.get('fallback_model') or '')
+                            if cfg.get('fallback_provider') else '')
+                         + ('' if cfg['enabled'] else ' · ⏸ tắt'), expanded=False):
             with st.form(f'agent-{agent_id}'):
                 c1, c2, c3 = st.columns(3)
-                provider = c1.selectbox('Provider', PROVIDERS, index=PROVIDERS.index(cfg['provider'])
+                provider = c1.selectbox('Provider', PROVIDERS, key=f'prov-{agent_id}', index=PROVIDERS.index(cfg['provider'])
                                         if cfg['provider'] in PROVIDERS else 0)
                 model = c2.text_input('Model', cfg['model'])
                 enabled = c3.checkbox('Bật', cfg['enabled'])
@@ -155,7 +216,8 @@ with tab_index:
         where = 'collection đang dùng' if item['is_active'] else 'lần dựng lại bị ngắt'
         st.warning(f'Lập chỉ mục dở dang ({where}) `{item["collection"]}`: '
                    f'{item["completed_chunks"]:,}/{item["total_chunks"] or 0:,} chunk.')
-        if st.button(f'▶️ Tiếp tục {item["collection"]}', key=f'resume-{item["collection"]}'):
+        if st.button(f'▶️ Tiếp tục {item["collection"]}', key=f'resume-{item["collection"]}',
+                     disabled=not privileged):
             try:
                 admin.resume_index(item['collection'])
                 st.success('Đã tiếp tục. Bấm "Làm mới" để xem tiến độ.')
@@ -164,16 +226,20 @@ with tab_index:
 
     b1, b2, b3, b4 = st.columns(4)
     b1.button('🔄 Làm mới')
-    confirm = st.checkbox('Tôi hiểu: dựng chỉ mục mới song song (cần Ollama), xong mới chuyển sang')
-    if b2.button('Dựng lại chỉ mục', disabled=not confirm):
+    if not privileged:
+        st.caption('🔒 Dựng lại / huỷ / quay lại chỉ mục cần nhập **khoá quản trị** ở thanh bên.')
+    confirm = st.checkbox('Tôi hiểu: dựng chỉ mục mới song song (cần Ollama), xong mới chuyển sang',
+                          disabled=not privileged)
+    if b2.button('Dựng lại chỉ mục', disabled=not (confirm and privileged)):
         try:
             admin.rebuild()
             st.success('Đã bắt đầu. Bấm "Làm mới" để xem tiến độ.')
         except api.BackendError as error:
             st.error(str(error))
-    if job and job['status'] == 'running' and b3.button('Huỷ'):
+    if job and job['status'] == 'running' and b3.button('Huỷ', disabled=not privileged):
         admin.cancel_rebuild()
-    if status.get('previous_collection') and b4.button('↩️ Quay lại collection trước'):
+    if status.get('previous_collection') and b4.button('↩️ Quay lại collection trước',
+                                                       disabled=not privileged):
         try:
             admin.rollback()
             st.rerun()

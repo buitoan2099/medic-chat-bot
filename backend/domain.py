@@ -94,6 +94,9 @@ class Conversation(Record):
     # Đề nghị chuyển đang chờ người nhận chấp nhận (BR-04)
     pending_transfer: Optional[dict[str, Any]] = None
     case_memory_upto: Optional[str] = None   # AG-5 đã xử lý tới tin nào
+    # Mốc chủ đề: khách chuyển sang hỏi bệnh/vấn đề khác từ tin này. AI chỉ đọc từ mốc trở đi;
+    # bản ghi đầy đủ vẫn giữ cho người trực / quản lý.
+    topic_start_id: Optional[str] = None
     version: int = 0                      # khoá lạc quan (BR-01)
 
 
@@ -147,6 +150,7 @@ class AiRun(Record):
     conversation_id: Optional[str] = None
     duration_s: Optional[float] = None
     queue_wait_s: Optional[float] = None     # thời gian xếp hàng chờ LLM (trước khi chạy)
+    total_s: Optional[float] = None          # tổng thời gian gọi, gồm cả lần thử model chính bị lỗi
     prompt_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     estimated_prompt_tokens: Optional[int] = None
@@ -259,6 +263,7 @@ class AiSuggestion(Record):
     red_flags: list[str] = Field(default_factory=list)
     monitoring_advice: str = ''
     appointment_needed: Optional[bool] = None
+    used_fallback: bool = False            # do model dự phòng tạo (model chính lỗi)
     confidence: str = ''
     regenerate_instruction: Optional[str] = None
     outcome: Optional[str] = None          # sent_unedited | edited | discarded | superseded

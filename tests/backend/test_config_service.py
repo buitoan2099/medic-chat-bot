@@ -56,3 +56,16 @@ def test_settings_update(service):
     assert service.settings()['llm_max_parallel'] == 3
     with pytest.raises(ConfigError):
         service.update_settings({'khong_co': 1}, actor='admin')
+
+
+def test_every_provider_in_config_page_is_accepted(service):
+    """Mọi provider trang Cấu hình model cho chọn đều phải được backend chấp nhận."""
+    import ast
+    import re
+    from pathlib import Path
+    page = Path(__file__).resolve().parents[2] / 'ui' / 'pages' / '9_Cau_hinh_model.py'
+    providers = ast.literal_eval(re.search(r'PROVIDERS = (\[.*?\])', page.read_text()).group(1))
+    for provider in providers:
+        updated = service.update_agent('ag0_triage', {'provider': provider, 'model': 'm',
+                                                      'fallback_provider': provider}, actor='admin')
+        assert updated.provider == provider

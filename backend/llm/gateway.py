@@ -46,6 +46,18 @@ class LLMResult:
     output_tokens: Optional[int] = None
     used_fallback: bool = False
     queue_wait_s: float = 0.0
+    fallback_reason: Optional[str] = None     # lỗi của model chính khi phải dùng dự phòng
+    total_s: float = 0.0                      # cả thời gian các lần thử lỗi trước đó
+
+
+def record_result(run, result):
+    """Ghi kết quả gọi LLM vào AiRun: model THỰC SỰ trả lời, thời gian, token, lý do dự phòng."""
+    run.provider, run.model = result.provider, result.model
+    run.duration_s, run.queue_wait_s = result.duration_s, result.queue_wait_s
+    run.prompt_tokens, run.output_tokens = result.prompt_tokens, result.output_tokens
+    run.total_s = result.total_s or result.duration_s
+    if result.used_fallback:
+        run.status, run.error = 'fallback', f'Model chính lỗi, đã dùng dự phòng: {result.fallback_reason}'[:500]
 
 
 @dataclass
@@ -59,6 +71,7 @@ class StreamStats:
     output_tokens: Optional[int] = None
     used_fallback: bool = False
     queue_wait_s: float = 0.0
+    fallback_reason: Optional[str] = None
     extra: dict = field(default_factory=dict)
 
 
@@ -299,70 +312,308 @@ class FakeAdapter:
 
 
 class OpenAICompatibleAdapter:
-    """OpenAI hoặc endpoint tương thích. Mặc định TẮT: dữ liệu khách không ra ngoài (Q-5)."""
+    """
+    OpenAI hoặc endpoint tương thích (OpenRouter, vLLM…). Mỗi endpoint một provider riêng (`name`).
+    Mặc định TẮT: dữ liệu khách không ra ngoài khi chưa cấu hình khoá (Q-5).
+    """
 
-    name = 'openai'
+    MAX_READ_TIMEOUT_S = 90.0        # model miễn phí có thể chậm; quá mức này thì chuyển dự phòng
 
-    def __init__(self, api_key, base_url):
-        from openai import OpenAI
-        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=300, max_retries=2)
+    def __init__(self, api_key, base_url, name='openai', client=None):
+        self.name = name
+        if client is None:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url=base_url, timeout=self.MAX_READ_TIMEOUT_S,
+                            max_retries=2)              # SDK tự thử lại khi 429 / 5xx
+        self.client = client
+        self._json_schema_ok = {}                       # model -> có nhận response_format json_schema
+
+    def _timeout(self, cfg):
+        return min(cfg['timeout_s'], self.MAX_READ_TIMEOUT_S)
+
+    def _error(self, error):
+        return LLMError(f'Lỗi {self.name}: {str(error)[:300]}')
+
+    def _create(self, cfg, messages, **kwargs):
+        return self.client.chat.completions.create(
+            model=cfg['model'], messages=messages, temperature=cfg['temperature'],
+            # model có suy nghĩ (reasoning) dùng thêm token -> nới để không bị cắt cụt
+            max_tokens=max(int(cfg['max_tokens']) * 4, 2048), timeout=self._timeout(cfg), **kwargs)
+
+    @staticmethod
+    def _usage(response):
+        usage = getattr(response, 'usage', None)
+        return {'prompt_tokens': getattr(usage, 'prompt_tokens', None),
+                'output_tokens': getattr(usage, 'completion_tokens', None)}
 
     def chat(self, messages, cfg, schema=None):
-        kwargs = {}
-        if schema is not None:
-            kwargs['response_format'] = {'type': 'json_object'}
+        model = cfg['model']
         try:
-            response = self.client.chat.completions.create(
-                model=cfg['model'], messages=messages, temperature=cfg['temperature'],
-                max_tokens=cfg['max_tokens'], timeout=cfg['timeout_s'], **kwargs)
+            if schema is not None and self._json_schema_ok.get(model, True):
+                try:
+                    response = self._create(cfg, messages, response_format={
+                        'type': 'json_schema',
+                        'json_schema': {'name': schema.get('title', 'Output'), 'strict': False, 'schema': schema}})
+                    self._json_schema_ok[model] = True
+                except Exception as error:      # model không hỗ trợ lược đồ -> JSON thường
+                    if 'response_format' not in str(error) and 'json_schema' not in str(error):
+                        raise
+                    self._json_schema_ok[model] = False
+                    response = self._create(cfg, messages, response_format={'type': 'json_object'})
+            elif schema is not None:
+                response = self._create(cfg, messages, response_format={'type': 'json_object'})
+            else:
+                response = self._create(cfg, messages)
+        except LLMError:
+            raise
         except Exception as error:
-            raise LLMError(f'Lỗi OpenAI: {error}') from error
-        usage = response.usage
-        return response.choices[0].message.content or '', {
-            'prompt_tokens': getattr(usage, 'prompt_tokens', None),
-            'output_tokens': getattr(usage, 'completion_tokens', None)}
+            raise self._error(error) from error
+        choice = response.choices[0]
+        if schema is not None and getattr(choice, 'finish_reason', None) == 'length':
+            raise LLMError(f'{self.name} bị cắt cụt khi trả JSON – tăng "Token tối đa"')
+        return choice.message.content or '', self._usage(response)
 
-    def chat_tools(self, messages, cfg, tools):
+    @staticmethod
+    def _convert_tools_messages(messages):
         converted = []
         for m in messages:              # chuyển định dạng tin 'tool' kiểu Ollama sang OpenAI
             if m['role'] == 'tool':
-                converted.append({'role': 'tool', 'tool_call_id': m.get('tool_call_id', m.get('tool_name')),
+                converted.append({'role': 'tool', 'tool_call_id': m.get('tool_call_id') or m.get('tool_name'),
                                   'content': m['content']})
             elif m.get('tool_calls'):
-                converted.append({'role': 'assistant', 'content': m.get('content') or '',
-                                  'tool_calls': [{'id': c.get('id', c['function']['name']), 'type': 'function',
-                                                  'function': {'name': c['function']['name'],
-                                                               'arguments': json.dumps(c['function']['arguments'])}}
-                                                 for c in m['tool_calls']]})
+                calls = []
+                for c in m['tool_calls']:
+                    function = c.get('function') or c
+                    calls.append({'id': c.get('id') or function.get('id') or function['name'], 'type': 'function',
+                                  'function': {'name': function['name'],
+                                               'arguments': json.dumps(function.get('arguments') or {},
+                                                                       ensure_ascii=False)}})
+                converted.append({'role': 'assistant', 'content': m.get('content') or '', 'tool_calls': calls})
             else:
-                converted.append(m)
+                converted.append({k: v for k, v in m.items() if k in ('role', 'content')})
+        return converted
+
+    def chat_tools(self, messages, cfg, tools):
         try:
-            response = self.client.chat.completions.create(
-                model=cfg['model'], messages=converted, temperature=cfg['temperature'],
-                max_tokens=cfg['max_tokens'], tools=tools, timeout=cfg['timeout_s'])
+            response = self._create(cfg, self._convert_tools_messages(messages), tools=tools)
         except Exception as error:
-            raise LLMError(f'Lỗi OpenAI: {error}') from error
+            raise self._error(error) from error
         message = response.choices[0].message
-        calls = [{'name': c.function.name, 'arguments': json.loads(c.function.arguments or '{}')}
-                 for c in (message.tool_calls or [])]
-        return {'content': message.content or '', 'tool_calls': calls}
+        calls = []
+        for c in message.tool_calls or []:
+            try:
+                arguments = json.loads(c.function.arguments or '{}')
+            except ValueError:
+                arguments = {}
+            calls.append({'name': c.function.name, 'arguments': arguments, 'id': c.id})
+        return {'content': message.content or '', 'tool_calls': calls, **self._usage(response)}
 
     def stream(self, messages, cfg, stats):
         try:
-            for chunk in self.client.chat.completions.create(
-                    model=cfg['model'], messages=messages, temperature=cfg['temperature'],
-                    max_tokens=cfg['max_tokens'], stream=True, timeout=cfg['timeout_s']):
+            for chunk in self._create(cfg, messages, stream=True, stream_options={'include_usage': True}):
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
+                if getattr(chunk, 'usage', None):
+                    stats.prompt_tokens = chunk.usage.prompt_tokens
+                    stats.output_tokens = chunk.usage.completion_tokens
         except Exception as error:
-            raise LLMError(f'Lỗi OpenAI: {error}') from error
+            raise self._error(error) from error
 
     def ping(self, model):
         try:
-            self.client.models.list()
-            return True, 'OpenAI-compatible OK'
+            ids = {m.id for m in self.client.models.list()}
         except Exception as error:
-            return False, f'Lỗi OpenAI: {error}'
+            return False, f'Lỗi {self.name}: {str(error)[:200]}'
+        if ids and model not in ids:
+            return False, f'{self.name} OK nhưng không có model "{model}"'
+        return True, f'{self.name} OK · {model}'
+
+
+class GeminiAdapter:
+    """
+    Google Gemini qua REST (generativelanguage.googleapis.com, khoá GEMINI_API_KEY).
+
+    - Đầu ra có cấu trúc: generationConfig.responseJsonSchema (nhận thẳng JSON Schema của pydantic).
+    - Gọi công cụ: functionDeclarations. Gemini 3 trả `thoughtSignature` kèm functionCall và BẮT BUỘC
+      gửi lại nguyên văn ở lượt sau -> giữ phần thô trong 'raw' của tin assistant.
+    - 429/503 (quá tải) -> thử lại có giãn cách; vẫn lỗi thì gateway chuyển sang model dự phòng.
+    """
+
+    name = 'gemini'
+    BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
+    RETRY_STATUS = (429, 500, 503)
+    RETRY_DELAYS = (1.5, 4.0)
+    # Gợi ý / trả lời bình thường mất 3–10 s; treo lâu hơn mức này thì chuyển sang dự phòng sớm
+    MAX_READ_TIMEOUT_S = 45.0
+
+    def __init__(self, api_key, session=None):
+        self.api_key = api_key
+        self.session = session or requests.Session()
+
+    # ---------- chuyển đổi định dạng ----------
+
+    @staticmethod
+    def _convert(messages):
+        """messages kiểu OpenAI/Ollama -> (systemInstruction, contents) của Gemini."""
+        system, contents = [], []
+
+        def add(role, parts):
+            if contents and contents[-1]['role'] == role:
+                contents[-1]['parts'].extend(parts)          # Gemini cần xen kẽ user/model
+            else:
+                contents.append({'role': role, 'parts': list(parts)})
+
+        for message in messages:
+            role, text = message.get('role'), message.get('content') or ''
+            if role == 'system':
+                system.append(text)
+            elif role == 'assistant':
+                if message.get('raw'):
+                    add('model', message['raw'])
+                else:
+                    parts = [{'text': text}] if text else []
+                    for call in message.get('tool_calls') or []:
+                        function = call.get('function') or call
+                        parts.append({'functionCall': {'name': function['name'],
+                                                       'args': function.get('arguments') or {}}})
+                    add('model', parts or [{'text': ''}])
+            elif role == 'tool':
+                try:
+                    response = json.loads(text)
+                except ValueError:
+                    response = {'content': text}
+                if not isinstance(response, dict):
+                    response = {'content': response}
+                part = {'functionResponse': {'name': message.get('tool_name') or 'tool',
+                                             'response': response}}
+                if message.get('tool_call_id'):
+                    part['functionResponse']['id'] = message['tool_call_id']
+                add('user', [part])
+            else:
+                add('user', [{'text': text}])
+        instruction = {'parts': [{'text': '\n\n'.join(system)}]} if system else None
+        return instruction, contents
+
+    @staticmethod
+    def _tools(tools):
+        declarations = []
+        for tool in tools or []:
+            function = tool.get('function') or tool
+            declarations.append({'name': function['name'], 'description': function.get('description', ''),
+                                 'parameters': function.get('parameters') or {'type': 'object', 'properties': {}}})
+        return [{'functionDeclarations': declarations}] if declarations else None
+
+    def _body(self, messages, cfg, schema=None, tools=None):
+        instruction, contents = self._convert(messages)
+        # Model Gemini 3 có "suy nghĩ" ẩn tính vào giới hạn token ra -> nới để không bị cắt cụt
+        generation = {'temperature': cfg['temperature'],
+                      'maxOutputTokens': max(int(cfg['max_tokens']) * 4, 2048)}
+        if schema is not None:
+            generation.update(responseMimeType='application/json', responseJsonSchema=schema)
+        body = {'contents': contents, 'generationConfig': generation}
+        if instruction:
+            body['systemInstruction'] = instruction
+        declared = self._tools(tools)
+        if declared:
+            body['tools'] = declared
+        return body
+
+    @staticmethod
+    def _parts(data):
+        candidates = data.get('candidates') or []
+        if not candidates:
+            reason = (data.get('promptFeedback') or {}).get('blockReason')
+            raise LLMError(f'Gemini không trả nội dung (blockReason={reason})')
+        candidate = candidates[0]
+        if candidate.get('finishReason') in ('SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST'):
+            raise LLMError(f'Gemini chặn nội dung (finishReason={candidate["finishReason"]})')
+        return (candidate.get('content') or {}).get('parts') or [], candidate.get('finishReason')
+
+    @staticmethod
+    def _usage(data):
+        usage = data.get('usageMetadata') or {}
+        return {'prompt_tokens': usage.get('promptTokenCount'),
+                'output_tokens': usage.get('candidatesTokenCount')}
+
+    # ---------- HTTP ----------
+
+    def _post(self, model, action, body, cfg, stream=False):
+        if not self.api_key:
+            raise LLMError('Chưa cấu hình GEMINI_API_KEY trong .env')
+        params = {'key': self.api_key}
+        if stream:
+            params['alt'] = 'sse'
+        url = f'{self.BASE_URL}/{model}:{action}'
+        for attempt in range(len(self.RETRY_DELAYS) + 1):
+            try:
+                read_timeout = min(cfg['timeout_s'], self.MAX_READ_TIMEOUT_S)
+                response = self.session.post(url, params=params, json=body, stream=stream,
+                                             timeout=(10, read_timeout))
+            except requests.exceptions.ReadTimeout as error:
+                raise LLMTimeout(f'Gemini không trả lời sau {read_timeout:.0f}s') from error
+            except requests.exceptions.RequestException as error:
+                raise LLMError(f'Lỗi kết nối Gemini: {type(error).__name__}') from error
+            if response.status_code == 200:
+                return response
+            if response.status_code in self.RETRY_STATUS and attempt < len(self.RETRY_DELAYS):
+                response.close()
+                time.sleep(self.RETRY_DELAYS[attempt])
+                continue
+            try:
+                detail = response.json().get('error', {}).get('message', '')
+            except ValueError:
+                detail = response.text
+            raise LLMError(f'Gemini HTTP {response.status_code}: {detail[:300]}')
+
+    # ---------- giao diện adapter ----------
+
+    def chat(self, messages, cfg, schema=None):
+        data = self._post(cfg['model'], 'generateContent', self._body(messages, cfg, schema), cfg).json()
+        parts, finish = self._parts(data)
+        text = ''.join(p.get('text', '') for p in parts if not p.get('thought'))
+        if finish == 'MAX_TOKENS' and schema is not None:
+            raise LLMError('Gemini bị cắt cụt (MAX_TOKENS) khi trả JSON – tăng "Token tối đa"')
+        return text, self._usage(data)
+
+    def chat_tools(self, messages, cfg, tools):
+        data = self._post(cfg['model'], 'generateContent', self._body(messages, cfg, tools=tools), cfg).json()
+        parts, _ = self._parts(data)
+        calls = [{'name': p['functionCall']['name'], 'arguments': p['functionCall'].get('args') or {},
+                  'id': p['functionCall'].get('id')} for p in parts if p.get('functionCall')]
+        text = ''.join(p.get('text', '') for p in parts if not p.get('thought'))
+        return {'content': text, 'tool_calls': calls, 'raw': parts, **self._usage(data)}
+
+    def stream(self, messages, cfg, stats):
+        response = self._post(cfg['model'], 'streamGenerateContent', self._body(messages, cfg), cfg,
+                              stream=True)
+        response.encoding = 'utf-8'           # SSE của Gemini không ghi charset -> requests đoán sai
+        with response:
+            for line in response.iter_lines(decode_unicode=True):
+                if not line or not line.startswith('data:'):
+                    continue
+                data = json.loads(line[5:].strip())
+                parts, _ = self._parts(data)
+                for part in parts:
+                    if part.get('text') and not part.get('thought'):
+                        yield part['text']
+                usage = self._usage(data)
+                if usage['prompt_tokens']:
+                    stats.prompt_tokens, stats.output_tokens = usage['prompt_tokens'], usage['output_tokens']
+
+    def ping(self, model):
+        if not self.api_key:
+            return False, 'Chưa cấu hình GEMINI_API_KEY trong .env'
+        try:
+            response = self.session.get(f'{self.BASE_URL}/{model}', params={'key': self.api_key}, timeout=10)
+        except requests.RequestException as error:
+            return False, f'Không kết nối được Gemini: {type(error).__name__}'
+        if response.status_code != 200:
+            try:
+                detail = response.json().get('error', {}).get('message', '')
+            except ValueError:
+                detail = response.text
+            return False, f'Gemini HTTP {response.status_code}: {detail[:200]}'
+        return True, f'Gemini OK · {model}'
 
 
 # ============================================================
@@ -370,10 +621,28 @@ class OpenAICompatibleAdapter:
 # ============================================================
 
 class LLMGateway:
-    def __init__(self, adapters: dict, max_parallel=2, queue_timeout_s=60.0):
+    # Nhà cung cấp chạy trên máy mình (giới hạn bởi phần cứng) dùng `limiter` chung theo
+    # llm_max_parallel; dịch vụ đám mây có hàng đợi riêng, song song nhiều hơn.
+    LOCAL_PROVIDERS = ('ollama', 'fake')
+
+    def __init__(self, adapters: dict, max_parallel=2, queue_timeout_s=60.0, remote_parallel=8):
         self.adapters = adapters
         self.limiter = PriorityLimiter(max_parallel)
+        self.remote_limiters = {}
+        self.remote_parallel = remote_parallel
         self.queue_timeout_s = queue_timeout_s
+
+    def limiter_for(self, provider):
+        if provider in self.LOCAL_PROVIDERS:
+            return self.limiter
+        if provider not in self.remote_limiters:
+            self.remote_limiters[provider] = PriorityLimiter(self.remote_parallel, reserved=0)
+        return self.remote_limiters[provider]
+
+    def set_remote_parallel(self, value):
+        self.remote_parallel = max(1, int(value))
+        for limiter in self.remote_limiters.values():
+            limiter.set_max_parallel(self.remote_parallel)
 
     def _adapter(self, provider):
         adapter = self.adapters.get(provider)
@@ -400,8 +669,10 @@ class LLMGateway:
             raise LLMError(f'Agent {agent_cfg.agent_id} đang tắt')
         last_error = None
         waited = 0.0
+        begun = time.perf_counter()
         for provider, model, is_fallback in self._targets(agent_cfg):
-            waited += self.limiter.acquire(priority, timeout=self.queue_timeout_s)
+            limiter = self.limiter_for(provider)
+            waited += limiter.acquire(priority, timeout=self.queue_timeout_s)
             started = time.perf_counter()
             try:
                 text, usage = self._adapter(provider).chat(messages, self._cfg(agent_cfg, model), schema)
@@ -410,11 +681,13 @@ class LLMGateway:
                                  duration_s=time.perf_counter() - started,
                                  prompt_tokens=usage.get('prompt_tokens'),
                                  output_tokens=usage.get('output_tokens'),
-                                 used_fallback=is_fallback, queue_wait_s=waited)
+                                 used_fallback=is_fallback, queue_wait_s=waited,
+                                 fallback_reason=str(last_error) if is_fallback and last_error else None,
+                                 total_s=time.perf_counter() - begun)
             except LLMError as error:
                 last_error = error
             finally:
-                self.limiter.release(priority)
+                limiter.release(priority)
         raise last_error
 
     def chat_tools(self, agent_cfg, messages, priority, tools):
@@ -431,18 +704,20 @@ class LLMGateway:
             if not hasattr(adapter, 'chat_tools'):
                 last_error = LLMError(f'Provider {provider} không hỗ trợ gọi công cụ')
                 continue
-            waited = self.limiter.acquire(priority, timeout=self.queue_timeout_s)
+            limiter = self.limiter_for(provider)
+            waited = limiter.acquire(priority, timeout=self.queue_timeout_s)
             started = time.perf_counter()
             try:
                 result = adapter.chat_tools(messages, self._cfg(agent_cfg, model), tools)
                 content = clean_response(result.get('content') or '')
                 return {**result, 'content': content, 'provider': provider, 'model': model,
                         'used_fallback': is_fallback, 'duration_s': time.perf_counter() - started,
-                        'queue_wait_s': waited}
+                        'queue_wait_s': waited,
+                        'fallback_reason': str(last_error) if is_fallback and last_error else None}
             except LLMError as error:
                 last_error = error
             finally:
-                self.limiter.release(priority)
+                limiter.release(priority)
         raise last_error
 
     def stream(self, agent_cfg, messages, priority, stats: StreamStats) -> Iterator[str]:
@@ -455,11 +730,14 @@ class LLMGateway:
             raise LLMError(f'Agent {agent_cfg.agent_id} đang tắt')
         last_error = None
         for provider, model, is_fallback in self._targets(agent_cfg):
-            stats.queue_wait_s += self.limiter.acquire(priority, timeout=self.queue_timeout_s)
+            limiter = self.limiter_for(provider)
+            stats.queue_wait_s += limiter.acquire(priority, timeout=self.queue_timeout_s)
             started = time.perf_counter()
             produced = False
             think = ThinkFilter()
             stats.provider, stats.model, stats.used_fallback = provider, model, is_fallback
+            if is_fallback and last_error:
+                stats.fallback_reason = str(last_error)
             try:
                 for piece in self._adapter(provider).stream(messages, self._cfg(agent_cfg, model), stats):
                     text = think.feed(piece)
@@ -479,7 +757,7 @@ class LLMGateway:
                     raise
                 last_error = error
             finally:
-                self.limiter.release(priority)
+                limiter.release(priority)
         raise last_error
 
     def ping(self, provider, model):

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.agents.registry import AG0_TRIAGE
 from backend.domain import LEVEL_ORDER, URGENCY_ORDER, AiRun, Level, Urgency
-from backend.llm.gateway import PRIORITY_TRIAGE, LLMError
+from backend.llm.gateway import PRIORITY_TRIAGE, LLMError, record_result
 from config import BASE_DIR
 from rag.pdf_parser import fold, nfc
 
@@ -29,6 +29,8 @@ class TriageResult(BaseModel):
     urgency: Literal['normal', 'soon', 'emergency']
     emergency_signs: list[str] = Field(default_factory=list)
     ai_allowed: bool
+    # Tin mới hỏi về bệnh / triệu chứng / thuốc KHÁC hẳn chủ đề đang trao đổi (không phải hỏi tiếp)
+    new_topic: bool = False
     reason: str = ''
 
 
@@ -83,6 +85,9 @@ class TriageService:
         user = (f'HỒ SƠ CA:\n{profile_text or "(chưa có)"}\n\n'
                 f'LỊCH SỬ GẦN NHẤT:\n{history_text or "(chưa có)"}\n\n'
                 f'TIN NHẮN MỚI NHẤT CỦA KHÁCH:\n{question}\n\n'
+                'new_topic = true CHỈ KHI có lịch sử và tin mới nhất hỏi về một bệnh / triệu chứng / '
+                'thuốc KHÁC hẳn chủ đề trong lịch sử (không phải hỏi tiếp, hỏi thêm chi tiết hay '
+                'bổ sung thông tin về cùng vấn đề). Không có lịch sử -> false.\n\n'
                 f'Trả về JSON với các trường: {schema_hint}')
         return [{'role': 'system', 'content': prompt}, {'role': 'user', 'content': user}], version
 
@@ -97,10 +102,7 @@ class TriageService:
         try:
             response = self.gateway.chat(cfg, messages, PRIORITY_TRIAGE,
                                          schema=TriageResult.model_json_schema())
-            run.provider, run.model = response.provider, response.model
-            run.duration_s, run.prompt_tokens = response.duration_s, response.prompt_tokens
-            run.queue_wait_s = response.queue_wait_s
-            run.output_tokens = response.output_tokens
+            record_result(run, response)
             llm_result = TriageResult.model_validate_json(response.text)
         except (LLMError, ValidationError, ValueError) as exc:
             error = f'{type(exc).__name__}: {exc}'[:500]

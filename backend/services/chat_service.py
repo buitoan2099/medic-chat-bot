@@ -22,6 +22,7 @@ from backend.domain import (
 )
 from backend.llm.gateway import PRIORITY_INTERACTIVE, LLMError, StreamStats
 from backend.services.mutate import mutate
+from backend.services.topic import start_new_topic, topic_messages
 from backend.services.triage import _max_level, _max_urgency
 from rag import rag
 
@@ -149,7 +150,7 @@ class ChatService:
         if conversation.mode != 'ai':
             raise ChatError('Cuộc trò chuyện đang ở chế độ người trực')
 
-        history = self.messages(conversation)
+        history = topic_messages(conversation, self.messages(conversation))
         user_message = self._add_message(conversation, SenderType.end_user, text,
                                          sender_id=conversation.end_user_id)
         yield {'type': 'message', 'message': user_message.model_dump(mode='json')}
@@ -160,6 +161,12 @@ class ChatService:
             ctx.history_lines(history, ctx.BUDGET['history'] // 4), conversation.id)
         triage = outcome.result
         conversation = self._apply_triage(conversation.id, triage)
+        if triage.new_topic and any(m.sender_type == SenderType.end_user for m in history):
+            # Khách chuyển sang hỏi vấn đề khác: bỏ bệnh cũ khỏi ngữ cảnh của AI
+            conversation = start_new_topic(self.storage, conversation.id, user_message.id, 'system',
+                                           reason=triage.reason) or self.get(conversation.id)
+            history = []
+            yield {'type': 'topic_changed'}
         yield {'type': 'triage', 'source': outcome.source, **triage.model_dump()}
 
         if triage.urgency == 'emergency':
@@ -219,8 +226,11 @@ class ChatService:
         run.provider, run.model = stats.provider or run.provider, stats.model or run.model
         run.duration_s, run.prompt_tokens = stats.duration_s, stats.prompt_tokens
         run.queue_wait_s = stats.queue_wait_s
+        if stats.used_fallback:
+            run.status = 'fallback'
+            run.error = f'Model chính lỗi, đã dùng dự phòng: {stats.fallback_reason}'[:500]
         run.output_tokens = stats.output_tokens
-        if run.status == 'ok':
+        if run.status in ('ok', 'fallback'):
             self.storage.ai_runs.add(run)
         answer = ''.join(parts).strip()
         if answer:

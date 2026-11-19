@@ -32,6 +32,9 @@ AUTH_SECRET = os.getenv('AUTH_SECRET', '').strip()
 # Chế độ chạy thử: tạo sẵn tài khoản demo_* và cho đăng nhập một chạm (KHÔNG cần mật khẩu).
 # Chỉ bật khi thử nghiệm; vận hành thật phải tắt.
 DEMO_MODE = os.getenv('DEMO_MODE', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
+# Mở trang Cấu hình model cho MỌI NGƯỜI (không cần nhập ADMIN_TOKEN): agent, prompt, cài đặt.
+# Thao tác chỉ mục (dựng lại / huỷ / quay lại) vẫn phải nhập khoá. Vận hành thật nên tắt.
+OPEN_MODEL_CONFIG = os.getenv('OPEN_MODEL_CONFIG', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
 
 # ============================================================
 # TRUY XUẤT (RETRIEVAL)
@@ -59,7 +62,12 @@ LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama').strip().lower()
 
 # Google Gemini (lấy key tại https://aistudio.google.com/apikey)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.5-flash-lite')
+
+# OpenRouter (OpenAI-compatible, nhiều model; ":free" = miễn phí, có giới hạn lượt)
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '').strip()
+OPENROUTER_BASE_URL = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1').strip().rstrip('/')
+OPENROUTER_MODEL = os.getenv('OPENROUTER_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b:free').strip()
 
 # OpenAI hoặc endpoint tương thích OpenAI (Groq, OpenRouter, DeepSeek...)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '').strip()

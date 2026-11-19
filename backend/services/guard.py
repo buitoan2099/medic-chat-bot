@@ -26,7 +26,7 @@ from backend.agents import context_builder as ctx
 from backend.agents.registry import AG6_GUARD
 from backend.agents.schemas import GuardOutput
 from backend.domain import AiRun, GuardCheck
-from backend.llm.gateway import PRIORITY_INTERACTIVE, LLMError
+from backend.llm.gateway import PRIORITY_INTERACTIVE, LLMError, record_result
 from config import BASE_DIR
 from rag.pdf_parser import fold
 
@@ -110,8 +110,7 @@ class GuardService:
             response = self.gateway.chat(cfg, [{'role': 'system', 'content': prompt},
                                                {'role': 'user', 'content': user}],
                                          PRIORITY_INTERACTIVE, schema=GuardOutput.model_json_schema())
-            run.duration_s, run.prompt_tokens = response.duration_s, response.prompt_tokens
-            run.queue_wait_s = response.queue_wait_s
+            record_result(run, response)
             llm = GuardOutput.model_validate_json(response.text)
         except (LLMError, ValidationError, ValueError) as error:
             llm_available = False

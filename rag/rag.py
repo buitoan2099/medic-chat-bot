@@ -100,6 +100,12 @@ FOLLOW_UP_MAX_WORDS = 6
 _FOLLOW_UP_RE = re.compile(r'^(con|vay|the|no|cai nay|cai do|neu|con neu)\b')
 
 
+def is_follow_up(question):
+    """Câu hỏi nối tiếp (ngắn, hoặc bắt đầu bằng "còn", "vậy", "nó"...) – cần ngữ cảnh trước."""
+    text = fold(question)
+    return len(text.split()) <= FOLLOW_UP_MAX_WORDS or bool(_FOLLOW_UP_RE.match(text))
+
+
 def _with_history(question, history):
     """
     Câu hỏi nối tiếp (ngắn hoặc bắt đầu bằng "còn", "vậy"...) được ghép câu
@@ -109,8 +115,7 @@ def _with_history(question, history):
 
     if not history:
         return question, False
-    text = fold(question)
-    if len(text.split()) <= FOLLOW_UP_MAX_WORDS or _FOLLOW_UP_RE.match(text):
+    if is_follow_up(question):
         return f'{history[-1]} {question}', True
     return question, False
 

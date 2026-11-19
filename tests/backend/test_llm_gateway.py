@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 
@@ -35,6 +36,18 @@ def test_fallback_model_used_when_primary_fails():
     config = cfg(fallback_provider='backup', fallback_model='m2')
     result = gw.chat(config, [], 2)
     assert result.text == 'dự phòng' and result.used_fallback and result.model == 'm2'
+    assert result.fallback_reason == 'down' and result.total_s >= result.duration_s
+
+
+def test_record_result_logs_real_model_and_fallback_reason():
+    from backend.domain import AiRun
+    from backend.llm.gateway import record_result
+    gw = LLMGateway({'fake': FakeAdapter(fail=LLMError('Gemini HTTP 503: high demand')),
+                     'backup': FakeAdapter(lambda m, c, s: 'ok')})
+    run = AiRun(agent_id='ag3', provider='fake', model='m')
+    record_result(run, gw.chat(cfg(fallback_provider='backup', fallback_model='qwen'), [], 3))
+    assert (run.provider, run.model, run.status) == ('backup', 'qwen', 'fallback')
+    assert '503' in run.error and run.total_s is not None
 
 
 def test_disabled_agent_raises():
@@ -128,3 +141,183 @@ def test_single_slot_still_runs_background_work():
     limiter = PriorityLimiter(max_parallel=1, reserved=1)
     assert limiter.acquire(5, timeout=0.05) < 0.05      # 1 chỗ: việc nền không bị chặn vĩnh viễn
     limiter.release(5)
+
+
+# ---------- Gemini (HTTP giả lập, không gọi mạng) ----------
+
+class _Resp:
+    def __init__(self, status, data=None, lines=None):
+        self.status_code, self._data, self._lines = status, data or {}, lines or []
+        self.text = json.dumps(self._data)
+
+    def json(self):
+        return self._data
+
+    def iter_lines(self, decode_unicode=False):
+        return iter(self._lines)
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _Session:
+    def __init__(self, responses):
+        self.responses, self.calls = list(responses), []
+
+    def post(self, url, params=None, json=None, stream=False, timeout=None):
+        self.calls.append({'url': url, 'body': json, 'params': params})
+        return self.responses.pop(0)
+
+    def get(self, url, params=None, timeout=None):
+        return self.responses.pop(0)
+
+
+def _gemini(responses):
+    from backend.llm.gateway import GeminiAdapter
+    adapter = GeminiAdapter('k', session=_Session(responses))
+    adapter.RETRY_DELAYS = (0, 0)
+    return adapter
+
+
+CFG = {'model': 'gemini-x', 'temperature': 0.1, 'max_tokens': 300, 'num_ctx': 0, 'timeout_s': 30}
+
+
+def _text(text, finish='STOP'):
+    return {'candidates': [{'content': {'parts': [{'text': text}]}, 'finishReason': finish}],
+            'usageMetadata': {'promptTokenCount': 12, 'candidatesTokenCount': 3}}
+
+
+def test_gemini_converts_messages_and_schema():
+    adapter = _gemini([_Resp(200, _text('{"a": 1}'))])
+    text, usage = adapter.chat([{'role': 'system', 'content': 'Bạn là A'},
+                                {'role': 'user', 'content': 'hỏi 1'},
+                                {'role': 'assistant', 'content': 'đáp 1'},
+                                {'role': 'user', 'content': 'hỏi 2'}], CFG, schema={'type': 'object'})
+    body = adapter.session.calls[0]['body']
+    assert body['systemInstruction']['parts'][0]['text'] == 'Bạn là A'
+    assert [c['role'] for c in body['contents']] == ['user', 'model', 'user']
+    assert body['generationConfig']['responseJsonSchema'] == {'type': 'object'}
+    assert text == '{"a": 1}' and usage == {'prompt_tokens': 12, 'output_tokens': 3}
+
+
+def test_gemini_retries_overload_then_succeeds():
+    adapter = _gemini([_Resp(503, {'error': {'message': 'high demand'}}), _Resp(200, _text('ok'))])
+    assert adapter.chat([{'role': 'user', 'content': 'x'}], CFG)[0] == 'ok'
+    assert len(adapter.session.calls) == 2
+
+
+def test_gemini_gives_up_after_retries_so_gateway_can_fall_back():
+    adapter = _gemini([_Resp(503, {'error': {'message': 'high demand'}})] * 3)
+    with pytest.raises(LLMError, match='503'):
+        adapter.chat([{'role': 'user', 'content': 'x'}], CFG)
+
+
+def test_gemini_truncated_json_is_an_error():
+    adapter = _gemini([_Resp(200, _text('{"a":', finish='MAX_TOKENS'))])
+    with pytest.raises(LLMError, match='MAX_TOKENS'):
+        adapter.chat([{'role': 'user', 'content': 'x'}], CFG, schema={'type': 'object'})
+
+
+def test_gemini_tool_round_trip_keeps_thought_signature():
+    call = {'functionCall': {'name': 'get_operator_metrics', 'args': {'staff': 'Lan'}, 'id': 'c1'},
+            'thoughtSignature': 'SIG'}
+    adapter = _gemini([_Resp(200, {'candidates': [{'content': {'parts': [call]}}]}),
+                       _Resp(200, _text('Nhận định'))])
+    tools = [{'type': 'function', 'function': {'name': 'get_operator_metrics', 'description': 'F-2',
+                                               'parameters': {'type': 'object', 'properties': {}}}}]
+    first = adapter.chat_tools([{'role': 'user', 'content': 'Hiệu suất Lan?'}], CFG, tools)
+    assert first['tool_calls'] == [{'name': 'get_operator_metrics', 'arguments': {'staff': 'Lan'}, 'id': 'c1'}]
+    history = [{'role': 'user', 'content': 'Hiệu suất Lan?'},
+               {'role': 'assistant', 'content': '', 'raw': first['raw'], 'tool_calls': []},
+               {'role': 'tool', 'tool_name': 'get_operator_metrics', 'tool_call_id': 'c1',
+                'content': '{"total": 1}'}]
+    assert adapter.chat_tools(history, CFG, tools)['content'] == 'Nhận định'
+    sent = adapter.session.calls[1]['body']['contents']
+    assert sent[1]['parts'][0]['thoughtSignature'] == 'SIG'                 # gửi lại nguyên văn
+    assert sent[2]['parts'][0]['functionResponse'] == {'name': 'get_operator_metrics',
+                                                       'response': {'total': 1}, 'id': 'c1'}
+
+
+def test_gemini_stream_yields_text():
+    lines = ['data: ' + json.dumps(_text('Xin ')), '', 'data: ' + json.dumps(_text('chào'))]
+    adapter = _gemini([_Resp(200, lines=lines)])
+    from backend.llm.gateway import StreamStats
+    stats = StreamStats()
+    assert ''.join(adapter.stream([{'role': 'user', 'content': 'x'}], CFG, stats)) == 'Xin chào'
+    assert stats.prompt_tokens == 12
+
+
+def test_remote_provider_not_queued_behind_local_model():
+    from backend.llm.gateway import LLMGateway
+    gateway = LLMGateway({}, max_parallel=1)
+    gateway.limiter.acquire(3)                                  # Ollama đang bận một gợi ý dài
+    assert gateway.limiter_for('gemini').acquire(2, timeout=0.05) < 0.05
+    gateway.limiter_for('gemini').release(2)
+    gateway.limiter.release(3)
+
+
+# ---------- OpenAI-compatible / OpenRouter (client giả lập) ----------
+
+class _NS:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+class _Completions:
+    def __init__(self, replies):
+        self.replies, self.calls = list(replies), []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+def _openai(replies):
+    from backend.llm.gateway import OpenAICompatibleAdapter
+    completions = _Completions(replies)
+    client = _NS(chat=_NS(completions=completions), models=_NS(list=lambda: []))
+    return OpenAICompatibleAdapter('k', 'http://x', name='openrouter', client=client), completions
+
+
+def _completion(content='', tool_calls=None, finish='stop'):
+    return _NS(choices=[_NS(message=_NS(content=content, tool_calls=tool_calls), finish_reason=finish)],
+               usage=_NS(prompt_tokens=10, completion_tokens=5))
+
+
+def test_openai_compatible_falls_back_to_json_object_when_schema_unsupported():
+    adapter, completions = _openai([Exception('response_format json_schema is not supported'),
+                                    _completion('{"a": 1}'), _completion('{"a": 2}')])
+    assert adapter.chat([{'role': 'user', 'content': 'x'}], CFG, schema={'title': 'T', 'type': 'object'})[0] == '{"a": 1}'
+    assert completions.calls[0]['response_format']['type'] == 'json_schema'
+    assert completions.calls[1]['response_format'] == {'type': 'json_object'}
+    adapter.chat([{'role': 'user', 'content': 'y'}], CFG, schema={'title': 'T', 'type': 'object'})
+    assert completions.calls[2]['response_format'] == {'type': 'json_object'}       # nhớ theo model
+
+
+def test_openai_compatible_tool_calls_keep_ids_and_errors_are_named():
+    call = _NS(id='call-1', function=_NS(name='get_operator_metrics', arguments='{"staff": "Lan"}'))
+    adapter, completions = _openai([_completion(tool_calls=[call]), Exception('429 rate limited')])
+    result = adapter.chat_tools([{'role': 'user', 'content': 'x'}], CFG, tools=[])
+    assert result['tool_calls'] == [{'name': 'get_operator_metrics', 'arguments': {'staff': 'Lan'}, 'id': 'call-1'}]
+    with pytest.raises(LLMError, match='openrouter'):
+        adapter.chat_tools([{'role': 'assistant', 'content': '', 'tool_calls': [
+            {'function': {'name': 'get_operator_metrics', 'arguments': {'staff': 'Lan'}}, 'id': 'call-1'}]},
+            {'role': 'tool', 'tool_name': 'get_operator_metrics', 'tool_call_id': 'call-1', 'content': '{}'}],
+            CFG, tools=[])
+    sent = completions.calls[1]['messages']
+    assert sent[0]['tool_calls'][0]['id'] == 'call-1' and sent[1]['tool_call_id'] == 'call-1'
+
+
+def test_openai_compatible_truncated_json_is_an_error():
+    adapter, _ = _openai([_completion('{"a":', finish='length')])
+    with pytest.raises(LLMError, match='cắt cụt'):
+        adapter.chat([{'role': 'user', 'content': 'x'}], CFG, schema={'title': 'T'})

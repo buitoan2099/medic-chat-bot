@@ -59,8 +59,11 @@ Biến môi trường chính (`.env`):
 | `BACKEND_URL` | Địa chỉ backend mà UI gọi |
 | `ADMIN_TOKEN` | Khoá vào trang Cấu hình model và API `/api/admin` |
 | `AUTH_SECRET` | Khoá ký token đăng nhập (đổi khoá thì mọi phiên đăng xuất) |
+| `OPEN_MODEL_CONFIG` | `true` = trang Cấu hình model mở cho mọi người (UI tự dùng `ADMIN_TOKEN` từ `.env`); thao tác chỉ mục vẫn cần nhập khoá. **Chạy thật để `false`** |
 | `DEMO_MODE` | `true` = có tài khoản thử đăng nhập không cần mật khẩu. **Chạy thật phải để `false`** |
-| `LLM_PROVIDER`, `GEMINI_*`, `OPENAI_*` | Nhà cung cấp LLM khác (tuỳ chọn) |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Khoá Gemini API (Google AI Studio). Có khoá thì backend bật provider `gemini` cho các agent |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL` | OpenRouter (provider `openrouter`, chuẩn OpenAI). Model `:free` miễn phí nhưng giới hạn lượt gọi |
+| `LLM_PROVIDER`, `OPENAI_*` | Nhà cung cấp khác (tuỳ chọn; `LLM_PROVIDER` chỉ dùng cho `app.py` cũ) |
 
 Công cụ dòng lệnh:
 - `scripts/staff.py`: quản lý nhân sự qua API admin.
@@ -95,7 +98,9 @@ Công cụ dòng lệnh:
 | AG-7 quản lý | 4 | 300 s | Câu hỏi ở khung 3 (gọi công cụ, tối đa 5 vòng) |
 | AG-5 hồ sơ ca | 5 | 180 s | Khi chuyển sang người trực, và **sau khi gợi ý xong** mỗi lần khách nhắn |
 
-Hàng đợi `PriorityLimiter`:
+Provider: `ollama` (máy mình), `gemini` (`GeminiAdapter`, REST generativelanguage: JSON theo `responseJsonSchema`, gọi công cụ có giữ `thoughtSignature`, stream SSE, tự thử lại khi 429/503), `openrouter` / `openai` (`OpenAICompatibleAdapter`: thử `response_format=json_schema`, model không hỗ trợ thì dùng `json_object`; giữ id lời gọi công cụ; chờ tối đa 90 s), `fake` (test). Mỗi agent có model dự phòng; model chính lỗi thì gateway chuyển sang dự phòng. Embedding tìm tài liệu vẫn là `bge-m3` trên Ollama (chỉ mục được tạo bằng model này).
+
+Hàng đợi `PriorityLimiter`: **mỗi dịch vụ đám mây một hàng đợi riêng** (`remote_llm_max_parallel`, mặc định 8), không xếp sau Ollama. Với Ollama:
 - `llm_max_parallel` yêu cầu chạy cùng lúc; ai chờ thì theo ưu tiên, cùng ưu tiên thì đến trước được trước.
 - `llm_reserved_slots` giữ chỗ cho việc ưu tiên 1–2: việc nền (≥ 3) không chiếm hết chỗ. Chỉ có tác dụng khi `llm_max_parallel ≥ 2`.
 - Mỗi lần gọi ghi `duration_s` và `queue_wait_s` (thời gian xếp hàng) vào `storage/ai/…/runs.jsonl`.
@@ -125,6 +130,7 @@ Số đo trên Mac mini (18–19/11/2026, `qwen3:14b`, ctx 16k):
 | **Gửi tin của người trực** | `operator_service.send` + `guard.check` | Mặc định không gọi AG-6: chỉ quy tắc (danh mục thuốc kê đơn thì chặn, trích dẫn thì cảnh báo) |
 | **Gợi ý vượt quyền không gửi được** | `operator_service.send` | Dựa vào `scope_check = exceeds` của gợi ý; nguyên văn hay đã sửa đều bị chặn |
 | Gửi nguyên gợi ý cần quyền `ai.send_unedited` (AC-2.9) | `send` | |
+| **Đổi chủ đề**: khách hỏi bệnh khác thì AI bỏ bệnh cũ | `services/topic.py` (`topic_start_id`, `start_new_topic`, `topic_messages`) | Phát hiện bằng AG-0 (`new_topic`, chế độ AI) hoặc gợi ý (`topic_changed`, chế độ người trực), hoặc người trực bấm nút (`POST …/new-topic`). Từ mốc: AI chỉ đọc tin sau mốc; hồ sơ ca xoá triệu chứng chính / khởi phát / mức độ / tóm tắt, giữ thông tin về người; bệnh cũ lưu trong sự kiện `topic_changed`. Tìm tài liệu chỉ ghép triệu chứng chính khi câu là **hỏi tiếp** (`rag.is_follow_up`). Không hạ cấp / độ khẩn |
 | Số liệu do code tính, AI chỉ viết nhận định (BR-11) | `metrics.py`, `forms.py` | F-1…F-6 |
 | AG-7 chỉ đọc; thao tác ghi = đề xuất cần xác nhận (BR-10) | `manager_agent.py` | |
 | Nâng C2/C3 cần chứng chỉ đã xác minh | `permissions.grant` | |

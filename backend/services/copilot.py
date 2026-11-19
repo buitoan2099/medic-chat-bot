@@ -15,9 +15,10 @@ from backend.agents.registry import AG5_CASE_MEMORY, COPILOT_BY_LEVEL
 from backend.agents.schemas import CaseMemoryOutput, CopilotOutput
 from backend.core import utc_now
 from backend.domain import AiRun, AiSuggestion, CaseProfile, SenderType
-from backend.llm.gateway import PRIORITY_BACKGROUND, PRIORITY_COPILOT, LLMError
+from backend.llm.gateway import PRIORITY_BACKGROUND, PRIORITY_COPILOT, LLMError, record_result
 from backend.services.guard import citation_leak
 from backend.services.mutate import mutate
+from backend.services.topic import start_new_topic, topic_messages
 from rag import rag
 
 
@@ -66,7 +67,10 @@ class CopilotService:
         settings = self.config.settings()
         collection = settings['active_collection']
         profile = conversation.profile
-        query = ' '.join(x for x in (question, profile.chief_complaint) if x)
+        # Chỉ ghép triệu chứng chính khi khách đang HỎI TIẾP; câu tự đủ nghĩa (thường là vấn đề
+        # mới) tìm theo chính nó, để bệnh cũ không kéo tài liệu sai vào gợi ý.
+        carry = profile.chief_complaint if rag.is_follow_up(question) else None
+        query = ' '.join(x for x in (question, carry) if x)
         retrieval = rag.retrieve(question, k=settings['top_k'], client=self.index.client,
                                  bm25_weights=self.config.bm25_weights(),
                                  use_dense=self.index.has_vectors(collection), collection=collection,
@@ -97,11 +101,13 @@ class CopilotService:
     def _generate(self, conversation_id, staff_id, level, instruction=None):
         with self._lock(conversation_id):
             conversation = self.storage.conversations.get(conversation_id)
-            messages = self.storage.messages.list(conversation.id, conversation.days)
+            messages = topic_messages(conversation,
+                                      self.storage.messages.list(conversation.id, conversation.days))
             customer = [m for m in messages if m.sender_type == SenderType.end_user]
             if not customer:
                 return None
             question = customer[-1]
+            earlier_customer = len(customer) > 1      # có chủ đề trước trong phạm vi đang đọc
             if not instruction and self._already_done(conversation, question.id, staff_id):
                 return self.latest(conversation)
             agent_id = COPILOT_BY_LEVEL[level]
@@ -118,6 +124,12 @@ class CopilotService:
             if instruction:
                 blocks.append('CHỈ DẪN CỦA NGƯỜI TRỰC (không được ghi đè phạm vi cấp quyền và '
                               f'khối an toàn): {instruction}')
+            if earlier_customer:
+                blocks.append('ĐỔI CHỦ ĐỀ: nếu CÂU HỎI HIỆN TẠI hỏi về bệnh / triệu chứng / thuốc KHÁC '
+                              'hẳn vấn đề trong lịch sử (không phải hỏi tiếp hay bổ sung), đặt '
+                              'topic_changed = true và CHỈ trả lời câu hỏi mới: bỏ qua bệnh cũ trong '
+                              'hồ sơ ca và lịch sử (vẫn dùng thông tin về người: tuổi, dị ứng, bệnh nền, '
+                              'thuốc đang dùng, mang thai).')
             blocks.append(f'Trả về JSON đúng lược đồ: {_schema_hint(CopilotOutput)}')
             llm_messages = [{'role': 'system', 'content': prompt},
                             {'role': 'user', 'content': '\n\n'.join(blocks)}]
@@ -136,11 +148,13 @@ class CopilotService:
                 response = self.gateway.chat(cfg, llm_messages, PRIORITY_COPILOT,
                                              schema=CopilotOutput.model_json_schema())
                 output = CopilotOutput.model_validate_json(response.text)
-                run.duration_s, run.prompt_tokens = response.duration_s, response.prompt_tokens
-                run.queue_wait_s = response.queue_wait_s
-                run.output_tokens, suggestion.model = response.output_tokens, response.model
+                record_result(run, response)
+                suggestion.model, suggestion.used_fallback = response.model, response.used_fallback
+                if output.topic_changed and earlier_customer:
+                    start_new_topic(self.storage, conversation.id, question.id, 'ai',
+                                    reason=f'{agent_id} nhận thấy khách hỏi vấn đề mới')
                 suggestion = suggestion.model_copy(update={
-                    **output.model_dump(exclude={'scope_check', 'confidence_reason'}),
+                    **output.model_dump(exclude={'scope_check', 'confidence_reason', 'topic_changed'}),
                     'scope_check': output.scope_check.model_dump(),
                     'confidence': output.confidence + (f' – {output.confidence_reason}'
                                                        if output.confidence_reason else '')})
@@ -177,7 +191,7 @@ class CaseMemoryService:
         try:
             conversation = self.storage.conversations.get(conversation_id)
             messages = self.storage.messages.list(conversation.id, conversation.days)
-            new = [m for m in messages
+            new = [m for m in topic_messages(conversation, messages)
                    if conversation.case_memory_upto is None or m.id > conversation.case_memory_upto]
             if not any(m.sender_type == SenderType.end_user for m in new):
                 return None
@@ -197,7 +211,7 @@ class CaseMemoryService:
                                              PRIORITY_BACKGROUND,
                                              schema=CaseMemoryOutput.model_json_schema())
                 output = CaseMemoryOutput.model_validate_json(response.text)
-                run.duration_s, run.queue_wait_s = response.duration_s, response.queue_wait_s
+                record_result(run, response)
             except (LLMError, ValidationError, ValueError) as error:
                 run.status, run.error = 'error', str(error)[:500]
                 self.storage.ai_runs.add(run)

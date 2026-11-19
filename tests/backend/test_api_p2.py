@@ -24,16 +24,21 @@ class Brain:
     def __init__(self):
         self.guard_issues = []          # issue AG-6 sẽ trả về cho lần kiểm tra kế tiếp
         self.calls = []
+        self.messages = []              # messages đầy đủ của từng lần gọi
+        self.new_topic = False          # AG-0 báo đổi chủ đề
+        self.topic_changed = False      # gợi ý báo đổi chủ đề
 
     def __call__(self, messages, cfg, schema):
         system, user = messages[0]['content'], messages[-1]['content']
         title = (schema or {}).get('title')
         self.calls.append((title, system, user))
+        self.messages.append(messages)
         if title == 'TriageResult':
             asks_treatment = 'nên uống' in user.split('TIN NHẮN MỚI NHẤT CỦA KHÁCH:')[-1]
             return json.dumps(dict(intent='treatment_request' if asks_treatment else 'drug_info',
                                    required_level='C2' if asks_treatment else 'none',
-                                   urgency='normal', ai_allowed=not asks_treatment, reason='x'))
+                                   urgency='normal', ai_allowed=not asks_treatment, reason='x',
+                                   new_topic=self.new_topic))
         if title == 'CopilotOutput':
             exceeds = 'C1 – TƯ VẤN THÔNG TIN THUỐC' in system and 'nên uống' in user
             return json.dumps({'reply_draft': DRAFT, 'follow_up_questions': ['Bạn bao nhiêu tuổi?'],
@@ -42,7 +47,8 @@ class Brain:
                                                'suggested_level': 'C2' if exceeds else None,
                                                'reason': 'hỏi thuốc cụ thể' if exceeds else ''},
                                'monitoring_advice': 'Sốt quá 3 ngày cần đi khám',
-                               'confidence': 'medium'}, ensure_ascii=False)
+                               'confidence': 'medium', 'topic_changed': self.topic_changed},
+                              ensure_ascii=False)
         if title == 'CaseMemoryOutput':
             return json.dumps({'profile': {'allergies': 'penicilin', 'chief_complaint': 'sốt'},
                                'needs_confirmation': [], 'summary': 'Khách sốt, dị ứng penicilin'},
@@ -449,3 +455,65 @@ def test_no_pre_send_ai_check_by_default(env):                               # g
     assert send(client, staff['lan'], conv_id, 'Tin tự soạn').status_code == 200
     assert send(client, staff['lan'], conv_id, DRAFT, suggestion_id=suggestion['id']).status_code == 200
     assert sum(1 for c in brain.calls if c[0] == 'GuardOutput') == before
+
+
+# ---------- đổi chủ đề: khách hỏi bệnh khác thì bỏ bệnh cũ ----------
+
+def test_ai_mode_new_topic_drops_previous_illness(env):
+    client, staff, brain = env
+    conv_id = client.post('/api/chat/conversations', json={'consent': True, 'profile': {
+        'age': '30', 'allergies': 'penicilin', 'chief_complaint': 'đau đầu'}}).json()['conversation']['id']
+    events(client.post(f'/api/chat/conversations/{conv_id}/messages', json={'text': 'Paracetamol trị đau đầu thế nào?'}))
+    brain.new_topic = True
+    stream = events(client.post(f'/api/chat/conversations/{conv_id}/messages',
+                                json={'text': 'Thuốc nhỏ mắt cho viêm kết mạc là gì?'}))
+    assert any(e['type'] == 'topic_changed' for e in stream)
+    conv = client.get(f'/api/chat/conversations/{conv_id}').json()['conversation']
+    assert conv['profile']['chief_complaint'] is None                         # bệnh cũ bỏ
+    assert conv['profile']['age'] == '30' and conv['profile']['allergies'] == 'penicilin'   # người giữ
+    answer_call = next(m for t, m in zip(reversed([c[0] for c in brain.calls]), reversed(brain.messages)) if t is None)
+    seen = ' '.join(m['content'] for m in answer_call)
+    assert 'Paracetamol trị đau đầu' not in seen and 'đau đầu' not in seen     # AG-1 không thấy bệnh cũ
+    assert 'viêm kết mạc' in seen
+
+
+def test_ai_mode_follow_up_keeps_topic(env):
+    client, staff, brain = env
+    conv_id = client.post('/api/chat/conversations', json={'consent': True}).json()['conversation']['id']
+    events(client.post(f'/api/chat/conversations/{conv_id}/messages', json={'text': 'Paracetamol trị đau đầu thế nào?'}))
+    events(client.post(f'/api/chat/conversations/{conv_id}/messages', json={'text': 'Còn liều cho trẻ em?'}))
+    conv = client.get(f'/api/chat/conversations/{conv_id}').json()['conversation']
+    assert conv['topic_start_id'] is None
+    seen = ' '.join(m['content'] for m in brain.messages[-1])
+    assert 'Paracetamol trị đau đầu' in seen                                  # vẫn giữ ngữ cảnh
+
+
+def test_copilot_detects_new_topic_and_case_memory_skips_old(env):
+    client, staff, brain = env
+    conv_id = customer(client)                                     # "Tôi bị sốt 2 ngày..."
+    claim(client, staff['lan'], conv_id)
+    brain.topic_changed = True
+    client.post(f'/api/chat/conversations/{conv_id}/messages',
+                json={'text': 'Tôi bị nổi mẩn ngứa ở tay thì bôi gì?'})
+    data = view(client, staff['lan'], conv_id).json()
+    new_msg = [m for m in data['messages'] if m['sender_type'] == 'end_user'][-1]
+    assert data['conversation']['topic_start_id'] == new_msg['id']
+    mark = next(e for e in data['events'] if e['type'] == 'topic_changed')
+    assert mark['actor_type'] == 'ai'
+    memory_call = [c for c in brain.calls if c[0] == 'CaseMemoryOutput'][-1][2]
+    new_part = memory_call.split('TIN NHẮN MỚI:')[1]
+    assert 'nổi mẩn' in new_part and 'sốt 2 ngày' not in new_part             # AG-5 chỉ đọc chủ đề mới
+
+
+def test_operator_marks_new_topic_manually(env):
+    client, staff, brain = env
+    conv_id = customer(client)
+    claim(client, staff['lan'], conv_id)
+    before = sum(1 for c in brain.calls if c[0] == 'CopilotOutput')
+    url = f'/api/operator/conversations/{conv_id}/new-topic'
+    assert client.post(url, headers=staff['minh']['h']).status_code == 400   # không phụ trách
+    marked = client.post(url, headers=staff['lan']['h'])
+    assert marked.status_code == 200 and marked.json()['topic_start_id']
+    assert marked.json()['summary'] == '' and marked.json()['profile']['chief_complaint'] is None
+    assert sum(1 for c in brain.calls if c[0] == 'CopilotOutput') == before + 1    # gợi ý tạo lại
+    assert client.post(url, headers=staff['lan']['h']).status_code == 400    # đã là mốc
